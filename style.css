@@ -1,0 +1,227 @@
+/* Make html and body take full height and remove margins */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Prevent scrollbars */
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; /* Modern system font stack */
+    background-color: #1a1a1a; /* Darker background for space */
+}
+
+body {
+    display: flex; /* Use flexbox for main layout */
+    flex-direction: column; /* Stack elements vertically */
+    align-items: center; /* Center items horizontally (affects button/info if not full width) */
+}
+
+/* Left Panel Styling */
+#left-panel {
+    position: absolute;
+    left: 15px;  /* Slightly closer to edge */
+    top: 15px;
+    width: 300px; /* Slightly wider */
+    background-color: rgba(40, 40, 40, 0.85); /* Darker, slightly transparent */
+    color: #e0e0e0; /* Lighter text */
+    padding: 20px;
+    border-radius: 24px; /* More rounded corners */
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 20px; /* Increased gap */
+    pointer-events: auto;
+    backdrop-filter: blur(5px); /* Optional: Frosted glass effect (check browser support) */
+    -webkit-backdrop-filter: blur(5px); /* Safari */
+    border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border */
+}
+
+/* Style adjustments for elements moved into left-panel */
+#left-panel h1 { /* GuessMap Title */
+    color: #fff;
+    margin: 0;
+    text-align: center;
+    font-size: 2em; /* Larger title */
+    font-weight: 500; /* Medium weight */
+}
+
+#left-panel #game-info {
+    padding: 15px; /* More padding */
+    border-radius: 16px; /* Rounded corners */
+    background-color: rgba(255, 255, 255, 0.05); /* Very subtle inner background */
+    text-align: left;
+}
+
+#left-panel #game-info p {
+    margin: 10px 0; /* More spacing */
+    font-size: 1em;
+    line-height: 1.5;
+}
+
+#left-panel #country-name,
+#left-panel #score,
+#left-panel #distance {
+    font-weight: 500; /* Medium weight */
+    color: #8ab4f8; /* Material You-like blue */
+    font-size: 1.1em;
+}
+
+#left-panel #distance:not(:empty)::after { /* Add units only if value exists */
+     content: " km";
+     font-size: 0.9em;
+     color: #bdbdbd;
+     margin-left: 4px;
+}
+
+/* Remove absolute positioning from button container */
+#left-panel #button-container {
+    display: flex;
+    gap: 15px; /* Increase gap */
+    justify-content: center;
+    margin-top: auto; /* Push to bottom */
+    padding-top: 15px;
+}
+
+/* Button styles remain mostly the same, just ensure they fit */
+#left-panel #guess-button,
+#left-panel #next-button {
+    padding: 12px 20px; /* More padding */
+    font-size: 1em;
+    border: none;
+    border-radius: 18px; /* Rounded buttons */
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    font-weight: 500;
+}
+#left-panel #guess-button:active:not(:disabled),
+#left-panel #next-button:active:not(:disabled) {
+    transform: scale(0.96); /* Press effect */
+}
+
+#left-panel #guess-button {
+    background-color: #8ab4f8; /* Accent blue */
+    color: #1f1f1f; /* Dark text on light blue */
+}
+#left-panel #guess-button:hover:not(:disabled) {
+    background-color: #a3c5f9;
+}
+#left-panel #guess-button:disabled {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.4);
+    cursor: not-allowed;
+    transform: none;
+}
+
+#left-panel #next-button {
+    background-color: #5f6368; /* Greyish */
+    color: #e0e0e0;
+}
+#left-panel #next-button:hover {
+    background-color: #70757a;
+}
+
+/* Cloud Toggle Styling */
+#left-panel .toggle-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 15px; /* Adjusted padding */
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 16px; /* Rounded */
+    margin-top: 0; /* Rely on main panel gap */
+}
+
+#left-panel .toggle-container label {
+    margin-right: 10px;
+    font-size: 1em;
+}
+
+/* Basic Checkbox - Consider replacing with a proper toggle switch CSS */
+#left-panel .toggle-container input[type="checkbox"] {
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    accent-color: #8ab4f8; /* Match accent blue */
+}
+
+/* Map Container - ensure it covers the whole area behind panels */
+#map-container {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1; /* Behind panels */
+    overflow: hidden;
+}
+
+/* Info Panel (Right Side) - styles remain the same */
+#info-panel {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 280px; /* Match left panel width or adjust */
+    background-color: rgba(40, 40, 40, 0.85);
+    color: #e0e0e0;
+    border-radius: 24px;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+    padding: 20px;
+    z-index: 11;
+    display: none; /* Keep initial hide state */
+    transition: opacity 0.3s ease-in-out;
+    pointer-events: auto;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.95em; /* Slightly larger base font */
+    max-height: calc(100vh - 30px); /* Allow it to grow, but not exceed viewport height (minus top/bottom margins) */
+    overflow-y: auto; /* Add scrollbar if content exceeds max-height */
+}
+
+#info-panel.visible { /* Use class for visibility */
+    display: block; /* Make it take space */
+    opacity: 1; /* Fade in */
+}
+
+#info-panel h2 { /* Country Name Title */
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.6em;
+    font-weight: 500;
+    color: #fff;
+    text-align: center;
+}
+
+#info-panel hr {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    margin: 15px 0;
+}
+
+#info-panel img { /* Flag */
+     display: block; /* Center image */
+     margin-left: auto;
+     margin-right: auto;
+     margin-bottom: 15px;
+     width: 100px; /* Larger flag */
+     border-radius: 4px; /* Slightly rounded */
+     border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#info-panel p {
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+#info-panel p strong {
+     color: #8ab4f8; /* Highlight labels */
+}
+
+/* Style for lists (e.g., feed sources if added back) */
+#info-panel ul {
+    padding-left: 20px;
+    margin-top: 5px;
+}
+#info-panel li {
+    margin-bottom: 5px;
+}
+
+/* Starfield needs no changes */ 

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guess the Country</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Left Panel Container -->
+    <div id="left-panel">
+        <h1>GuessMap</h1>
+
+        <div id="game-info">
+            <p>Find this country: <span id="country-name">Loading...</span></p>
+            <p>Score: <span id="score">0</span></p>
+            <p>Last Guess Distance: <span id="distance">N/A</span> km</p>
+        </div>
+
+        <!-- Cloud Toggle Switch -->
+        <div class="toggle-container">
+            <label for="cloud-toggle">Show Clouds:</label>
+            <input type="checkbox" id="cloud-toggle" checked> <!-- Checked by default -->
+        </div>
+        <!-- End Cloud Toggle -->
+
+        <div id="button-container">
+            <button id="guess-button">Confirm Guess</button>
+            <button id="next-button" style="display: none;">Next Country</button>
+        </div>
+    </div>
+
+    <!-- Map Container -->
+    <div id="map-container">
+        <!-- 3D Map will be loaded here -->
+    </div>
+
+    <!-- Info Panel -->
+    <div id="info-panel" style="display: none;">
+        <h2 id="panel-country-name">Country Name</h2>
+        <hr>
+        <div id="panel-country-facts">
+            <p>Facts will appear here...</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Lensflare.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
