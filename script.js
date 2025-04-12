@@ -264,13 +264,23 @@ function initMap() {
 
     // Controls
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; // Smooths rotation
-    controls.dampingFactor = 0.05;
+
+    // --- Enable and Configure Damping for Smoothness ---
+    controls.enableDamping = true; // ESSENTIAL for smooth zoom/rotate inertia
+    controls.dampingFactor = 0.1; // Increase slightly (default 0.05). Higher = more drag/slower stop. Try 0.08 - 0.15
+
+    // --- Adjust Sensitivity ---
+    controls.rotateSpeed = 0.3; // Further reduce rotation speed (try 0.2 - 0.4)
+    controls.zoomSpeed = 0.7;   // Reduce zoom speed slightly (try 0.6 - 0.9)
+    controls.panSpeed = 0.5;    // Keep pan speed reduced or adjust
+
+    // --- Other Control Settings ---
     controls.minDistance = GLOBE_RADIUS + 1; // Prevent zooming inside globe
-    controls.maxDistance = 50;
-    controls.rotateSpeed = 0.5; // Reduce rotation speed (default is 1.0, try 0.3-0.7)
-    controls.zoomSpeed = 0.8;   // Optionally reduce zoom speed (default is 1.0)
-    controls.panSpeed = 0.5;    // Optionally reduce panning speed (default is 1.0)
+    controls.maxDistance = 50; // Adjust max zoom out if needed
+
+    // The combination of lower rotateSpeed and damping should make
+    // rotation feel less sensitive, especially when zoomed in,
+    // as the damping effect is more noticeable with smaller movements.
 
     // Raycaster for click detection
     raycaster = new THREE.Raycaster();
@@ -297,7 +307,9 @@ function onWindowResize() {
 
 function animate() {
     requestAnimationFrame(animate);
-    controls.update();
+    // --- IMPORTANT: Update Controls for Damping ---
+    controls.update(); // MUST be called each frame if enableDamping is true
+    // ---------------------------------------------
 
     // --- Cloud Rotation ---
     if (cloudMesh) {
@@ -505,6 +517,7 @@ function startNewRound() {
         console.error("Failed to select new country in startNewRound.");
         countryNameElement.textContent = "Error! Reload?";
         guessButton.disabled = true;
+        nextButton.disabled = true;
         return;
     }
     countryNameElement.textContent = currentCountry.name;
@@ -790,48 +803,41 @@ function removeTargetRings() {
 
 function onPointerDown(event) {
     console.log("onPointerDown fired!");
-    // --- Add check for locked guess early ---
-    // if (isGuessLocked) {
-    //     console.log("Guess is locked, ignoring pointer down on pin.");
-    //     return; // Option 1: Exit entirely if guess is locked
-    // }
-
+    // ... (calculate mouse, set up raycaster) ...
     mouse.x = ((event.clientX - renderer.domElement.getBoundingClientRect().left) / renderer.domElement.width) * 2 - 1;
     mouse.y = -((event.clientY - renderer.domElement.getBoundingClientRect().top) / renderer.domElement.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
 
-    console.log("Checking for pin intersection. pinSprite:", pinSprite);
+    console.log("Checking for pin intersection. pinSprite exists:", !!pinSprite); // Log if pin sprite object exists
     const pinIntersects = pinSprite ? raycaster.intersectObject(pinSprite) : [];
-    console.log("pinIntersects length:", pinIntersects.length);
+    console.log("Pin intersects length:", pinIntersects.length, "| Is guess locked:", isGuessLocked); // Log intersection result and lock status
 
-    // --- Modify this condition ---
-    // Only start dragging if the pin is clicked AND the guess isn't locked
+    // Check if the pin was hit and guess is not locked
     if (pinIntersects.length > 0 && !isGuessLocked) {
-        // Start dragging the existing pin
-        console.log("Intersection detected with pinSprite. Starting drag.");
+        console.log(">>> Pin CLICKED & unlocked! Starting drag state."); // <-- Important log
         isDraggingPin = true;
         controls.enabled = false;
         mapContainer.style.cursor = 'grabbing';
         pinSprite.material.color.copy(PIN_COLOR_HOVER);
     }
-    // --- Only call handleMapClick if not dragging AND guess not locked ---
-    // (This part assumes handleMapClick is only for *placing* the pin initially,
-    // if it also handles moving existing pins, the logic needs adjustment)
+    // Check if map was clicked when not dragging and unlocked
     else if (!isDraggingPin && !isGuessLocked) {
-        // If not clicking the pin, treat as a potential map click
-        console.log("No intersection with pinSprite or guess locked. Calling handleMapClick.");
-        handleMapClick(event); // Call the original click handler to place/move pin
-    } else if (!isDraggingPin && isGuessLocked) {
-         console.log("Clicked map, but guess is locked."); // Log if clicking map when locked
+        console.log(">>> Map CLICKED (not pin) & unlocked. Calling handleMapClick."); // <-- Important log
+        handleMapClick(event);
+    }
+    // Log case where click happens but guess is locked
+    else if (isGuessLocked) {
+         console.log(">>> Click ignored because guess is locked."); // <-- Important log
     }
 }
 
 function onPointerMove(event) {
-    // --- Hover Effect (Simplified for Mobile) ---
+    // ... (calculate mouse, set up raycaster) ...
     mouse.x = ((event.clientX - renderer.domElement.getBoundingClientRect().left) / renderer.domElement.width) * 2 - 1;
     mouse.y = -((event.clientY - renderer.domElement.getBoundingClientRect().top) / renderer.domElement.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
 
+    // --- Hover Logic (Simplified for Mobile) ---
     const pinIntersects = pinSprite ? raycaster.intersectObject(pinSprite) : [];
 
     if (!isDraggingPin) {
@@ -852,9 +858,23 @@ function onPointerMove(event) {
         }
     }
 
-    // --- Dragging Logic (remains the same) ---
+    // --- Dragging Logic ---
     if (isDraggingPin && pinSprite) {
-        // ... (dragging logic: raycast globe, update pin position) ...
+        // --- Add log here ---
+        console.log(">>> Dragging pin... Raycasting against globe."); // <-- Important log
+
+        const globeIntersects = raycaster.intersectObject(globe);
+        // --- Add log here ---
+        console.log(`Globe intersects during drag: ${globeIntersects.length}`);
+
+        if (globeIntersects.length > 0) {
+            const intersectionPoint = globeIntersects[0].point;
+            const newPinPosition = intersectionPoint.clone().normalize().multiplyScalar(GLOBE_RADIUS + PIN_OFFSET);
+            // --- Add log here ---
+            // console.log(`Updating pin position to: ${newPinPosition.x.toFixed(2)}, ${newPinPosition.y.toFixed(2)}, ${newPinPosition.z.toFixed(2)}`);
+            pinSprite.position.copy(newPinPosition);
+            playerGuess = getLatLonFromPoint(newPinPosition);
+        }
     }
 }
 
