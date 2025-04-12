@@ -241,113 +241,111 @@ body {
 
     /* --- Top Panel (#left-panel becomes top) --- */
     #left-panel {
-        position: relative; /* Change from absolute */
-        left: 0;
-        top: 0;
+        position: relative; /* Needs to be relative for flex */
+        left: auto; /* Unset absolute positioning */
+        top: auto;
         width: 100%; /* Full width */
-        max-height: none; /* Remove max-height */
-        overflow-y: visible; /* Remove scroll */
-        border-radius: 0; /* Remove border-radius */
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); /* Bottom shadow */
-        z-index: 10; /* Keep above map */
-        padding: 10px; /* Adjust padding */
-        gap: 8px; /* Adjust gap */
-        backdrop-filter: none; /* Remove backdrop filter */
-        border: none; /* Remove border */
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1); /* Add bottom border */
-        background-color: #202124; /* Slightly different solid color */
-        flex-shrink: 0; /* Prevent shrinking */
+        max-height: none;
+        overflow-y: visible;
+        border-radius: 0;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        z-index: 10;
+        padding: 10px;
+        gap: 8px;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: #202124;
+        flex-shrink: 0; /* Important: Don't let top panel shrink */
+        /* Keep internal flex column layout */
+        display: flex;
+        flex-direction: column;
     }
-     /* Adjust elements inside top panel */
-     #left-panel h1 {
-         font-size: 1.3em;
-         text-align: left; /* Align title left */
-     }
-     #left-panel #game-info {
-         padding: 8px;
-         border-radius: 8px;
-     }
-     #left-panel #game-info p {
-         font-size: 0.85em;
-         margin: 5px 0;
-     }
-     #left-panel .toggle-container {
-         padding: 6px 8px;
-         border-radius: 8px;
-     }
-     #left-panel .toggle-container label {
-         font-size: 0.85em;
-     }
-     #left-panel #button-container {
-         padding-top: 5px;
-         margin-top: 5px;
-         gap: 8px;
-     }
-     #left-panel #guess-button, #left-panel #next-button {
-         padding: 8px 12px;
-         font-size: 0.85em;
-         border-radius: 12px;
-     }
+    /* Adjust elements inside top panel */
+    #left-panel h1 {
+        font-size: 1.3em;
+        text-align: left; /* Align title left */
+    }
+    #left-panel #game-info {
+        padding: 8px;
+        border-radius: 8px;
+    }
+    #left-panel #game-info p {
+        font-size: 0.85em;
+        margin: 5px 0;
+    }
+    #left-panel .toggle-container {
+        padding: 6px 8px;
+        border-radius: 8px;
+    }
+    #left-panel .toggle-container label {
+        font-size: 0.85em;
+    }
+    #left-panel #button-container {
+        padding-top: 5px;
+        margin-top: 5px;
+        gap: 8px;
+    }
+    #left-panel #guess-button, #left-panel #next-button {
+        padding: 8px 12px;
+        font-size: 0.85em;
+        border-radius: 12px;
+    }
 
 
     /* --- Map Container (Middle) --- */
     #map-container {
-        position: relative; /* Change from absolute */
+        position: relative; /* Needs to be relative for flex */
         width: 100%;
-        height: auto; /* Let flexbox control height */
-        flex-grow: 1; /* Take remaining vertical space */
+        height: auto; /* Height determined by flex */
+        flex-grow: 1; /* IMPORTANT: Take remaining vertical space */
         z-index: 1; /* Below panels */
-        /* Ensure renderer resizes correctly - handled by JS */
+        overflow: hidden; /* Prevent content spillover */
     }
 
 
     /* --- Bottom Panel (#info-panel becomes bottom) --- */
     #info-panel {
-        position: relative; /* Change from absolute */
-        top: auto; /* Unset top/right */
-        right: auto;
-        left: 0;
-        width: 100%; /* Full width */
-        max-height: 40vh; /* Limit height, allow scroll */
-        overflow-y: auto; /* Add scroll */
-        border-radius: 0; /* Remove border-radius */
-        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3); /* Top shadow */
-        z-index: 10; /* Keep above map */
-        padding: 0; /* Remove padding from main panel, apply to columns */
-        backdrop-filter: none; /* Remove backdrop filter */
-        border: none; /* Remove border */
-        border-top: 1px solid rgba(255, 255, 255, 0.1); /* Add top border */
-        background-color: #202124; /* Match top panel color */
-        flex-shrink: 0; /* Prevent shrinking */
+        position: relative; /* Needs to be relative for flex */
+        bottom: auto; /* Unset absolute positioning */
+        left: auto;
+        width: 100%;
+        max-height: 40vh;
+        overflow-y: auto;
+        border-radius: 0;
+        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+        z-index: 10;
+        padding: 0; /* Padding applied to inner wrapper */
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: #202124;
+        flex-shrink: 0; /* Important: Don't let bottom panel shrink */
         /* Visibility handled by JS */
         display: none; /* Default hidden */
-        transition: none; /* Remove opacity transition for this layout */
-        opacity: 1; /* Ensure fully opaque when shown */
+        /* Keep internal layout styles (.info-content-wrapper, etc.) */
     }
-    #info-panel.visible {
-        display: block; /* Change to block when visible */
-        opacity: 1; /* Ensure opacity is 1 */
+    #info-panel.visible { /* JS uses display:block now */
+        display: block;
     }
-     /* Adjust elements inside bottom panel */
-     #info-panel h2 { /* Country Name */
-         font-size: 1.2em;
-         text-align: left;
-         margin-bottom: 5px;
-     }
-     #info-panel hr {
-         margin: 8px 0;
-     }
-     #info-panel img { /* Flag */
-          width: 40px;
-          margin-bottom: 8px;
-          float: right; /* Example: float flag right */
-          margin-left: 10px;
-     }
-     #info-panel p {
-         font-size: 0.85em;
-         line-height: 1.4;
-         margin-bottom: 6px;
-     }
+    /* Adjust elements inside bottom panel */
+    #info-panel h2 { /* Country Name */
+        font-size: 1.2em;
+        text-align: left;
+        margin-bottom: 5px;
+    }
+    #info-panel hr {
+        margin: 8px 0;
+    }
+    #info-panel img { /* Flag */
+        width: 40px;
+        margin-bottom: 8px;
+        float: right; /* Example: float flag right */
+        margin-left: 10px;
+    }
+    #info-panel p {
+        font-size: 0.85em;
+        line-height: 1.4;
+        margin-bottom: 6px;
+    }
 
     /* --- New Mobile Info Panel Inner Layout --- */
     #info-panel .info-content-wrapper {
@@ -370,12 +368,12 @@ body {
         float: none;
         margin: 0;
     }
-     #info-panel .info-flag-column .no-flag {
-          font-size: 0.8em; /* Slightly bigger fallback text */
-          color: #888;
-          text-align: center;
-          padding-top: 10px; /* Add some padding if no flag */
-     }
+    #info-panel .info-flag-column .no-flag {
+        font-size: 0.8em; /* Slightly bigger fallback text */
+        color: #888;
+        text-align: center;
+        padding-top: 10px; /* Add some padding if no flag */
+    }
 
 
     #info-panel .info-text-column {
@@ -401,17 +399,17 @@ body {
         margin: 0 0 6px 0; /* Reset top margin */
         color: #e0e0e0; /* Ensure color */
     }
-     #info-panel .info-text-column #panel-country-facts p strong {
-          color: #8ab4f8; /* Keep highlight */
-     }
+    #info-panel .info-text-column #panel-country-facts p strong {
+        color: #8ab4f8; /* Keep highlight */
+    }
 
 
     /* --- Hide Hover Effects on Mobile --- */
     @media (hover: none) {
         #left-panel #guess-button:hover:not(:disabled),
         #left-panel #next-button:hover {
-             /* Disable hover effects if needed */
-             background-color: initial; /* Or set specific non-hover colors */
+            /* Disable hover effects if needed */
+            background-color: initial; /* Or set specific non-hover colors */
         }
     }
 }

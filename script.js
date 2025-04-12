@@ -64,21 +64,6 @@ const PIN_COLOR_HOVER = new THREE.Color(0xffa500);
 // --- DEFINE SHARED COLOR FIRST ---
 const LINE_AND_TARGET_COLOR = 0xffff00; // Yellow
 
-// --- Shared Ring Geometry and Base Material ---
-const targetRingGeometry = new THREE.RingGeometry(
-    TARGET_RING_MAX_SCALE * 0.95, // Inner radius (slightly smaller than max scale)
-    TARGET_RING_MAX_SCALE,      // Outer radius (defines max size)
-    32                          // Segments
-);
-const targetRingBaseMaterial = new THREE.MeshBasicMaterial({
-    color: LINE_AND_TARGET_COLOR,
-    transparent: true,
-    opacity: 1.0,
-    side: THREE.DoubleSide, // Render both sides
-    depthTest: true,       // Enable occlusion
-    depthWrite: false
-});
-
 // --- GraphQL API Interaction ---
 const GRAPHQL_ENDPOINT = 'https://countries-274616.ew.r.appspot.com'; // From graphcountries README
 
@@ -728,34 +713,61 @@ function removePin() {
 }
 
 // --- Ring Target Functions ---
+
+// --- Define reusable geometry outside the function ---
+let sharedRingLineGeometry = null;
+function createSharedRingLineGeometry() {
+     if (sharedRingLineGeometry) return sharedRingLineGeometry; // Return if already created
+
+     const segments = 64;
+     const points = [];
+     for (let i = 0; i <= segments; i++) {
+         const theta = (i / segments) * Math.PI * 2;
+         points.push(
+             new THREE.Vector3(
+                 Math.cos(theta) * TARGET_RING_MAX_SCALE,
+                 Math.sin(theta) * TARGET_RING_MAX_SCALE,
+                 0
+             )
+         );
+     }
+     sharedRingLineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+     console.log("Shared ring line geometry created.");
+     return sharedRingLineGeometry;
+}
+
 function createTargetRings() {
     if (!currentCountry) return;
-    removeTargetRings(); // Clear previous rings first
-    targetRingClock.start(); // Start/reset the animation clock
+    removeTargetRings();
+    targetRingClock.start();
 
-    console.log("Creating target rings...");
+    console.log("Creating target ring lines...");
 
-    // Calculate target position ON the sphere surface
     const targetPositionOnSphere = getPointFromLatLon(currentCountry.lat, currentCountry.lon);
-    // Calculate offset position
-    const targetPositionOffset = targetPositionOnSphere.clone().normalize().multiplyScalar(GLOBE_RADIUS + TARGET_OFFSET);
+    const targetPositionOffset = targetPositionOnSphere.clone().normalize().multiplyScalar(GLOBE_RADIUS + PIN_OFFSET);
+
+    // Get or create the shared geometry
+    const ringGeometry = createSharedRingLineGeometry();
 
     for (let i = 0; i < NUM_TARGET_RINGS; i++) {
-        // Clone the base material so each ring can have independent opacity/color later if needed
-        const ringMaterial = targetRingBaseMaterial.clone();
-        const ringMesh = new THREE.Mesh(targetRingGeometry, ringMaterial);
+        const ringLineMaterial = new THREE.LineBasicMaterial({
+            color: LINE_AND_TARGET_COLOR,
+            transparent: true,
+            opacity: 1.0,
+            linewidth: 2, // Set line thickness
+            depthTest: true,
+            depthWrite: false
+        });
 
-        // Position the ring
-        ringMesh.position.copy(targetPositionOffset);
+        // Use the shared geometry
+        const ringLine = new THREE.LineLoop(ringGeometry, ringLineMaterial);
 
-        // Orient the ring to lie flat on the globe surface at that point
-        // Make it look towards the center of the globe (adjust if globe isn't at 0,0,0)
-        ringMesh.lookAt(globe.position); // Or new THREE.Vector3(0,0,0)
-
-        targetRings.push(ringMesh); // Add to our array
-        scene.add(ringMesh);        // Add to the scene
+        ringLine.position.copy(targetPositionOffset);
+        ringLine.lookAt(globe.position);
+        targetRings.push(ringLine);
+        scene.add(ringLine);
     }
-    console.log(`${targetRings.length} target rings created.`);
+    console.log(`${targetRings.length} target ring lines created.`);
 }
 
 function removeTargetRings() {
@@ -763,15 +775,14 @@ function removeTargetRings() {
         console.log("Removing target rings...");
         targetRings.forEach(ring => {
             scene.remove(ring);
-            // Dispose of the cloned material
+            // Only dispose of the material (geometry is shared)
             if (ring.material) {
                 ring.material.dispose();
             }
-            // Geometry is shared, only dispose if sure it's not needed elsewhere
-            // if (ring.geometry) ring.geometry.dispose();
         });
-        targetRings = []; // Clear the array
-        targetRingClock.stop(); // Stop the clock
+        targetRings = [];
+        targetRingClock.stop();
+        // Don't dispose shared geometry here, maybe dispose on game end/reload if needed
     }
 }
 
