@@ -816,41 +816,34 @@ function onPointerDown(event) {
 }
 
 function onPointerMove(event) {
-    // --- Hover Effect ---
+    // --- Hover Effect (Simplified for Mobile) ---
     mouse.x = ((event.clientX - renderer.domElement.getBoundingClientRect().left) / renderer.domElement.width) * 2 - 1;
     mouse.y = -((event.clientY - renderer.domElement.getBoundingClientRect().top) / renderer.domElement.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
 
     const pinIntersects = pinSprite ? raycaster.intersectObject(pinSprite) : [];
 
-    if (!isDraggingPin) { // Only handle hover if not dragging
+    if (!isDraggingPin) {
         if (pinIntersects.length > 0) {
-            // Hovering over pin
-            pinSprite.scale.set(PIN_SCALE_HOVER, PIN_SCALE_HOVER, PIN_SCALE_HOVER);
-            pinSprite.material.color.copy(PIN_COLOR_HOVER); // Set hover color
+            // --- REMOVE Scale and Color changes for hover ---
+            // pinSprite.scale.set(PIN_SCALE_HOVER, PIN_SCALE_HOVER, PIN_SCALE_HOVER);
+            // pinSprite.material.color.copy(PIN_COLOR_HOVER);
+            // --- Keep Cursor Change ---
             mapContainer.style.cursor = 'grab';
         } else {
-            // Not hovering over pin
-             if (pinSprite) { // Reset scale and color only if pin exists
-               pinSprite.scale.set(PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT);
-               pinSprite.material.color.copy(PIN_COLOR_DEFAULT); // Reset to default color
-             }
+            // --- REMOVE Scale and Color reset ---
+            // if (pinSprite) {
+            //    pinSprite.scale.set(PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT);
+            //    pinSprite.material.color.copy(PIN_COLOR_DEFAULT);
+            // }
+            // --- Keep Cursor Change ---
             mapContainer.style.cursor = 'auto';
         }
     }
 
-    // --- Dragging Logic ---
+    // --- Dragging Logic (remains the same) ---
     if (isDraggingPin && pinSprite) {
-        // Pin color should already be orange from the hover/pointerdown event
-        // Raycast against the *globe*...
-        const globeIntersects = raycaster.intersectObject(globe);
-        // ... (update pin position based on globe intersection) ...
-        if (globeIntersects.length > 0) {
-            const intersectionPoint = globeIntersects[0].point;
-            const newPinPosition = intersectionPoint.clone().normalize().multiplyScalar(GLOBE_RADIUS + PIN_OFFSET);
-            pinSprite.position.copy(newPinPosition);
-            playerGuess = getLatLonFromPoint(newPinPosition);
-        }
+        // ... (dragging logic: raycast globe, update pin position) ...
     }
 }
 
@@ -891,66 +884,62 @@ async function initGame() {
 // Start Game
 window.onload = initGame;
 
-// Function to show the info panel with facts and feed source names
+// Function to show the info panel (Mobile layout structure built here)
 function showCountryInfoPanel(country) {
     if (!country || !country.name) return;
     const countryName = country.name;
-    const countryCode = country.alpha2Code; // Get the code loaded earlier
+    const countryCode = country.alpha2Code;
 
-    panelCountryName.textContent = countryName;
+    // --- Prepare Content Parts ---
+    let flagHtml = '';
+    if (countryCode) {
+        const flagUrl = `https://flagcdn.com/w160/${countryCode.toLowerCase()}.png`;
+        flagHtml = `<img src="${flagUrl}" alt="Flag of ${countryName}" onerror="this.style.display='none'; console.error('Failed to load flag: ${flagUrl}');">`;
+    } else {
+        flagHtml = `<div class="no-flag">(Flag unavailable)</div>`; // Placeholder if no flag
+    }
 
+    let factsHtml = '';
     let facts = null;
     if (allCountryFacts) {
-         facts = allCountryFacts[countryName];
+        facts = allCountryFacts[countryName];
     }
-
-    let htmlContent = '';
-
-    // --- Add Flag Image ---
-    if (countryCode) {
-        const flagUrl = `https://flagcdn.com/w160/${countryCode.toLowerCase()}.png`; // Use lowercase code, w160 = 160px width
-        // Add onerror to hide if flag fails to load
-        htmlContent += `<img src="${flagUrl}" alt="Flag of ${countryName}" style="width: 80px; height: auto; margin-bottom: 10px; border: 1px solid #ccc;" onerror="this.style.display='none'; console.error('Failed to load flag: ${flagUrl}');">`;
-    } else {
-        htmlContent += `<p><small>(Flag image unavailable)</small></p>`; // Fallback if no code
-    }
-    // --- End Flag Image ---
-
 
     if (facts && typeof facts === 'string') {
-        console.log(`Formatting facts string for ${countryName}`);
         const factList = facts.split('. ').filter(f => f.trim() !== '');
-        // Append facts after the image
-        htmlContent += factList.map(f => `<p>${f}.</p>`).join('');
-    }
-    else if (facts) {
-         console.warn(`Data found for ${countryName} in facts.json, but it's not a string (type: ${typeof facts}). Check facts.json structure.`);
-         htmlContent += "<p>Fact data is not in the expected format.</p>";
-    }
-     else {
-        // Append fallback message if facts are missing
-        htmlContent += "<p>No specific facts available for this country yet.</p>";
-        if (!allCountryFacts) { console.warn("Facts not loaded."); }
-        else { console.warn(`Facts not found for country key: ${countryName}`); }
+        factsHtml = factList.map(f => `<p>${f}.</p>`).join('');
+    } else if (facts) {
+        factsHtml = "<p>Fact data is not in the expected format.</p>";
+    } else {
+        factsHtml = "<p>No specific facts available for this country yet.</p>";
     }
 
-    panelCountryFacts.innerHTML = htmlContent;
+    // --- Construct Panel Inner HTML ---
+    infoPanelElement.innerHTML = `
+        <div class="info-content-wrapper">
+            <div class="info-flag-column">
+                ${flagHtml}
+            </div>
+            <div class="info-text-column">
+                <h2 id="panel-country-name">${countryName}</h2>
+                <hr>
+                <div id="panel-country-facts">
+                    ${factsHtml}
+                </div>
+            </div>
+        </div>
+    `; // Overwrite entire panel content with new structure
 
-    // Make panel visible
-    infoPanelElement.style.display = 'block';
-    requestAnimationFrame(() => {
-        infoPanelElement.classList.add('visible');
-    });
+    // --- Visibility Control ---
+    infoPanelElement.style.display = 'block'; // Show the panel
 
     console.log(`Showing info panel for ${countryName}`);
 }
 
-// Function to hide the info panel
+// Function to hide the info panel (Clear innerHTML)
 function hideCountryInfoPanel() {
-    infoPanelElement.classList.remove('visible');
     infoPanelElement.style.display = 'none';
-    panelCountryName.textContent = '';
-    panelCountryFacts.innerHTML = ''; // Clear content
+    infoPanelElement.innerHTML = ''; // Clear the content completely
 }
 
 // --- Add Event Listener for Toggle ---

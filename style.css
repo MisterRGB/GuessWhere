@@ -6,6 +6,8 @@ html, body {
     overflow: hidden; /* Prevent scrollbars */
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; /* Modern system font stack */
     background-color: #1a1a1a; /* Darker background for space */
+    /* --- Desktop: Default block layout --- */
+    display: block; /* Explicitly default for desktop */
 }
 
 body {
@@ -17,18 +19,20 @@ body {
 /* Left Panel Styling */
 #left-panel {
     position: absolute;
-    left: 15px;  /* Slightly closer to edge */
+    left: 15px;
     top: 15px;
-    width: 300px; /* Slightly wider */
+    width: 300px;
+    max-height: calc(100vh - 30px);
+    overflow-y: auto;
     background-color: rgba(40, 40, 40, 0.85); /* Darker, slightly transparent */
     color: #e0e0e0; /* Lighter text */
     padding: 20px;
-    border-radius: 24px; /* More rounded corners */
+    border-radius: 24px;
     box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
     z-index: 10;
     display: flex;
     flex-direction: column;
-    gap: 20px; /* Increased gap */
+    gap: 15px;
     pointer-events: auto;
     backdrop-filter: blur(5px); /* Optional: Frosted glass effect (check browser support) */
     -webkit-backdrop-filter: blur(5px); /* Safari */
@@ -77,8 +81,8 @@ body {
     display: flex;
     gap: 15px; /* Increase gap */
     justify-content: center;
-    margin-top: auto; /* Push to bottom */
-    padding-top: 15px;
+    margin-top: 10px;
+    padding-top: 10px;
 }
 
 /* Button styles remain mostly the same, just ensure they fit */
@@ -159,7 +163,9 @@ body {
     position: absolute;
     top: 15px;
     right: 15px;
-    width: 280px; /* Match left panel width or adjust */
+    width: 280px;
+    max-height: calc(100vh - 30px);
+    overflow-y: auto;
     background-color: rgba(40, 40, 40, 0.85);
     color: #e0e0e0;
     border-radius: 24px;
@@ -172,9 +178,7 @@ body {
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    font-size: 0.95em; /* Slightly larger base font */
-    max-height: calc(100vh - 30px); /* Allow it to grow, but not exceed viewport height (minus top/bottom margins) */
-    overflow-y: auto; /* Add scrollbar if content exceeds max-height */
+    font-size: 0.9em; /* Slightly smaller base font */
 }
 
 #info-panel.visible { /* Use class for visibility */
@@ -224,4 +228,215 @@ body {
     margin-bottom: 5px;
 }
 
-/* Starfield needs no changes */ 
+/* Starfield needs no changes */
+
+/* --- Responsive Styles for Tablets & Mobile (< 769px) --- */
+@media (max-width: 768px) {
+    /* --- Activate Flex Layout on Body --- */
+    body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh; /* Ensure body takes full viewport height */
+    }
+
+    /* --- Top Panel (#left-panel becomes top) --- */
+    #left-panel {
+        position: relative; /* Change from absolute */
+        left: 0;
+        top: 0;
+        width: 100%; /* Full width */
+        max-height: none; /* Remove max-height */
+        overflow-y: visible; /* Remove scroll */
+        border-radius: 0; /* Remove border-radius */
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); /* Bottom shadow */
+        z-index: 10; /* Keep above map */
+        padding: 10px; /* Adjust padding */
+        gap: 8px; /* Adjust gap */
+        backdrop-filter: none; /* Remove backdrop filter */
+        border: none; /* Remove border */
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1); /* Add bottom border */
+        background-color: #202124; /* Slightly different solid color */
+        flex-shrink: 0; /* Prevent shrinking */
+    }
+     /* Adjust elements inside top panel */
+     #left-panel h1 {
+         font-size: 1.3em;
+         text-align: left; /* Align title left */
+     }
+     #left-panel #game-info {
+         padding: 8px;
+         border-radius: 8px;
+     }
+     #left-panel #game-info p {
+         font-size: 0.85em;
+         margin: 5px 0;
+     }
+     #left-panel .toggle-container {
+         padding: 6px 8px;
+         border-radius: 8px;
+     }
+     #left-panel .toggle-container label {
+         font-size: 0.85em;
+     }
+     #left-panel #button-container {
+         padding-top: 5px;
+         margin-top: 5px;
+         gap: 8px;
+     }
+     #left-panel #guess-button, #left-panel #next-button {
+         padding: 8px 12px;
+         font-size: 0.85em;
+         border-radius: 12px;
+     }
+
+
+    /* --- Map Container (Middle) --- */
+    #map-container {
+        position: relative; /* Change from absolute */
+        width: 100%;
+        height: auto; /* Let flexbox control height */
+        flex-grow: 1; /* Take remaining vertical space */
+        z-index: 1; /* Below panels */
+        /* Ensure renderer resizes correctly - handled by JS */
+    }
+
+
+    /* --- Bottom Panel (#info-panel becomes bottom) --- */
+    #info-panel {
+        position: relative; /* Change from absolute */
+        top: auto; /* Unset top/right */
+        right: auto;
+        left: 0;
+        width: 100%; /* Full width */
+        max-height: 40vh; /* Limit height, allow scroll */
+        overflow-y: auto; /* Add scroll */
+        border-radius: 0; /* Remove border-radius */
+        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3); /* Top shadow */
+        z-index: 10; /* Keep above map */
+        padding: 0; /* Remove padding from main panel, apply to columns */
+        backdrop-filter: none; /* Remove backdrop filter */
+        border: none; /* Remove border */
+        border-top: 1px solid rgba(255, 255, 255, 0.1); /* Add top border */
+        background-color: #202124; /* Match top panel color */
+        flex-shrink: 0; /* Prevent shrinking */
+        /* Visibility handled by JS */
+        display: none; /* Default hidden */
+        transition: none; /* Remove opacity transition for this layout */
+        opacity: 1; /* Ensure fully opaque when shown */
+    }
+    #info-panel.visible {
+        display: block; /* Change to block when visible */
+        opacity: 1; /* Ensure opacity is 1 */
+    }
+     /* Adjust elements inside bottom panel */
+     #info-panel h2 { /* Country Name */
+         font-size: 1.2em;
+         text-align: left;
+         margin-bottom: 5px;
+     }
+     #info-panel hr {
+         margin: 8px 0;
+     }
+     #info-panel img { /* Flag */
+          width: 40px;
+          margin-bottom: 8px;
+          float: right; /* Example: float flag right */
+          margin-left: 10px;
+     }
+     #info-panel p {
+         font-size: 0.85em;
+         line-height: 1.4;
+         margin-bottom: 6px;
+     }
+
+    /* --- New Mobile Info Panel Inner Layout --- */
+    #info-panel .info-content-wrapper {
+        display: flex;
+        padding: 10px;
+        gap: 10px;
+    }
+
+    #info-panel .info-flag-column {
+        flex: 0 0 150px; /* Don't grow, don't shrink, base width 150px */
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+    }
+    #info-panel .info-flag-column img {
+        width: 100%; /* Flag still fills its column */
+        height: auto;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        float: none;
+        margin: 0;
+    }
+     #info-panel .info-flag-column .no-flag {
+          font-size: 0.8em; /* Slightly bigger fallback text */
+          color: #888;
+          text-align: center;
+          padding-top: 10px; /* Add some padding if no flag */
+     }
+
+
+    #info-panel .info-text-column {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    /* Adjust elements inside text column */
+    #info-panel .info-text-column h2 { /* Country Name */
+        font-size: 1.2em;
+        text-align: left;
+        margin: 0 0 5px 0; /* Adjust margin */
+        color: #fff; /* Ensure color */
+        font-weight: 500;
+    }
+    #info-panel .info-text-column hr {
+        margin: 5px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    #info-panel .info-text-column #panel-country-facts p {
+        font-size: 0.85em;
+        line-height: 1.4;
+        margin: 0 0 6px 0; /* Reset top margin */
+        color: #e0e0e0; /* Ensure color */
+    }
+     #info-panel .info-text-column #panel-country-facts p strong {
+          color: #8ab4f8; /* Keep highlight */
+     }
+
+
+    /* --- Hide Hover Effects on Mobile --- */
+    @media (hover: none) {
+        #left-panel #guess-button:hover:not(:disabled),
+        #left-panel #next-button:hover {
+             /* Disable hover effects if needed */
+             background-color: initial; /* Or set specific non-hover colors */
+        }
+    }
+}
+
+/* --- Keep Desktop Hover Effects --- */
+@media (hover: hover) and (min-width: 769px) {
+    /* Put existing :hover styles inside here */
+    #left-panel #guess-button:hover:not(:disabled) {
+        background-color: #a3c5f9;
+    }
+    #left-panel #next-button:hover {
+        background-color: #70757a;
+    }
+}
+
+/* Ensure desktop styles for info panel content are correct */
+#info-panel h2 { /* Desktop title */
+     /* ... */
+}
+#info-panel hr { /* Desktop hr */
+    /* ... */
+}
+#info-panel img { /* Desktop flag */
+     /* ... */
+}
+#info-panel p { /* Desktop facts */
+    /* ... */
+} 
