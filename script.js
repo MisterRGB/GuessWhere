@@ -887,7 +887,7 @@ function onPointerUp(event) {
 // --- Initialization ---
 async function initGame() {
     console.log("Initializing game...");
-    setupEventListeners(); // Sets up all listeners including shadow toggle
+    setupEventListeners(); // Sets up all listeners including actions toggle
     hideCountryInfoPanel();
     initMap(); // Creates scene, enables/disables shadows based on checkbox default
 
@@ -903,6 +903,7 @@ async function initGame() {
         guessButton.disabled = true;
         nextButton.disabled = true;
     }
+
     console.log("Game initialized.");
 }
 

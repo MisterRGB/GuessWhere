@@ -9,28 +9,29 @@
 <body>
     <!-- Left Panel Container -->
     <div id="left-panel">
-        <h1>GuessMap</h1>
+        <h1>Guess Where</h1>
 
         <div id="game-info">
             <p>Find this country: <span id="country-name">Loading...</span></p>
             <p>Score: <span id="score">0</span></p>
-            <p>Last Guess Distance: <span id="distance">N/A</span> km</p>
+            <p>Last Guess Distance: <span id="distance">N/A</span></p>
         </div>
 
-        <!-- Cloud Toggle Switch -->
-        <div class="toggle-container">
-            <label for="cloud-toggle">Show Clouds:</label>
-            <input type="checkbox" id="cloud-toggle" checked> <!-- Checked by default -->
+        <!-- Wrapper for Side-by-Side Toggles (Mobile) -->
+        <div class="toggles-wrapper">
+            <!-- Cloud Toggle Switch -->
+            <div class="toggle-container">
+                <label for="cloud-toggle">Clouds:</label>
+                <input type="checkbox" id="cloud-toggle" checked>
+            </div>
+            <!-- Shadow Toggle Switch -->
+            <div class="toggle-container">
+                <label for="shadow-toggle">Shadows:</label>
+                <input type="checkbox" id="shadow-toggle" checked>
+            </div>
         </div>
-        <!-- End Cloud Toggle -->
 
-        <!-- Shadow Toggle Switch -->
-        <div class="toggle-container">
-            <label for="shadow-toggle">Shadows:</label>
-            <input type="checkbox" id="shadow-toggle" checked> <!-- Shadows on by default -->
-        </div>
-        <!-- End Shadow Toggle -->
-
+        <!-- Button Container (Now always visible on mobile) -->
         <div id="button-container">
             <button id="guess-button">Confirm Guess</button>
             <button id="next-button" style="display: none;">Next Country</button>

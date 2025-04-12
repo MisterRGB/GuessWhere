@@ -19,9 +19,9 @@ body {
 /* Left Panel Styling */
 #left-panel {
     position: absolute;
-    left: 15px;
-    top: 15px;
+    padding: 5px;
     width: 300px;
+
     max-height: calc(100vh - 30px);
     overflow-y: auto;
     background-color: rgba(40, 40, 40, 0.85); /* Darker, slightly transparent */
@@ -161,8 +161,8 @@ body {
 /* Info Panel (Right Side) - styles remain the same */
 #info-panel {
     position: absolute;
-    top: 15px;
-    right: 15px;
+    top: 0;
+    right: 0;
     width: 280px;
     max-height: calc(100vh - 30px);
     overflow-y: auto;
@@ -232,189 +232,259 @@ body {
 
 /* --- Responsive Styles for Tablets & Mobile (< 769px) --- */
 @media (max-width: 768px) {
-    /* --- Activate Flex Layout on Body --- */
-    body {
-        display: flex;
-        flex-direction: column;
-        height: 100vh; /* Ensure body takes full viewport height */
+    html, body {
+        overflow-x: hidden;
     }
 
-    /* --- Top Panel (#left-panel becomes top) --- */
+    body { /* ... (Keep flex styles) ... */ }
+
+    /* --- Top Panel (#left-panel) --- */
     #left-panel {
-        position: relative; /* Needs to be relative for flex */
-        left: auto; /* Unset absolute positioning */
-        top: auto;
-        width: 100%; /* Full width */
-        max-height: none;
-        overflow-y: visible;
-        border-radius: 0;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        position: relative;
+        width: 100%;
+        padding: 25px 30px;
+        box-sizing: border-box;
+        overflow: hidden;
+        background-color: rgba(40, 40, 40, 0.9);
+        color: #e0e0e0;
+        border-radius: 0 0 16px 16px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
         z-index: 10;
-        padding: 10px;
-        gap: 8px;
-        border: none;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        background-color: #202124;
-        flex-shrink: 0; /* Important: Don't let top panel shrink */
-        /* Keep internal flex column layout */
         display: flex;
         flex-direction: column;
+        gap: 12px; /* Adjust gap */
+        pointer-events: auto;
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+        flex-shrink: 0;
+        padding-bottom: 15px; /* Ensure space at bottom */
     }
-    /* Adjust elements inside top panel */
+
+    /* Adjust Content Inside Top Panel */
     #left-panel h1 {
-        font-size: 1.3em;
-        text-align: left; /* Align title left */
+         width: 100%;
+         box-sizing: border-box;
+         font-size: 1.4em;
+         text-align: center;
+         margin-bottom: 5px;
+         font-weight: 500;
+         padding: 0;
     }
     #left-panel #game-info {
-        padding: 8px;
-        border-radius: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background-color: rgba(255, 255, 255, 0.05);
+        width: auto;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-left: 0;
+        margin-right: 0;
     }
     #left-panel #game-info p {
-        font-size: 0.85em;
-        margin: 5px 0;
+        font-size: 0.9em;
+        margin: 6px 0;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
     }
     #left-panel .toggle-container {
-        padding: 6px 8px;
-        border-radius: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background-color: rgba(255, 255, 255, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: auto;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-left: 0;
+        margin-right: 0;
     }
     #left-panel .toggle-container label {
-        font-size: 0.85em;
+        margin-right: 10px;
+        font-size: 0.9em;
+        flex-shrink: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    #left-panel .toggle-container input[type="checkbox"] {
+        cursor: pointer;
+        width: 20px;
+        height: 20px;
+        accent-color: #8ab4f8;
     }
     #left-panel #button-container {
-        padding-top: 5px;
-        margin-top: 5px;
-        gap: 8px;
+        margin-top: 0;
+        padding-top: 0;
     }
-    #left-panel #guess-button, #left-panel #next-button {
-        padding: 8px 12px;
-        font-size: 0.85em;
-        border-radius: 12px;
-    }
+     #left-panel #guess-button, #left-panel #next-button {
+         padding: 10px 15px;
+         font-size: 0.9em;
+         border-radius: 14px;
+     }
 
 
     /* --- Map Container (Middle) --- */
     #map-container {
-        position: relative; /* Needs to be relative for flex */
+        position: relative;
         width: 100%;
-        height: auto; /* Height determined by flex */
-        flex-grow: 1; /* IMPORTANT: Take remaining vertical space */
-        z-index: 1; /* Below panels */
-        overflow: hidden; /* Prevent content spillover */
+        height: auto;
+        flex-grow: 1;
+        z-index: 1;
+        overflow: hidden;
+        /* display: none; */ /* --- TEMPORARILY HIDE MAP --- (Uncomment this line for testing) */
     }
 
 
-    /* --- Bottom Panel (#info-panel becomes bottom) --- */
+    /* --- Bottom Panel (#info-panel): Match Top Panel Style --- */
     #info-panel {
-        position: relative; /* Needs to be relative for flex */
-        bottom: auto; /* Unset absolute positioning */
-        left: auto;
-        width: 100%;
-        max-height: 40vh;
+        position: relative;
+        /* --- Size & Spacing: Full Width --- */
+        width: 100%; /* Full width */
+        max-width: none; /* Remove max-width limit */
+        margin-left: 0; /* Remove auto margins */
+        margin-right: 0;
+        margin-top: 0; /* Remove space above, sits flush with map */
+        max-height: 45vh; /* Adjust height limit if needed */
         overflow-y: auto;
-        border-radius: 0;
-        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+        /* --- Appearance: Match Top Panel --- */
+        background-color: rgba(40, 40, 40, 0.9); /* Match background */
+        color: #e0e0e0;
+        padding: 15px; /* Match padding */
+        border-radius: 16px 16px 0 0; /* Top-Left, Top-Right, Bottom-Right(0), Bottom-Left(0) */
+        box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.3); /* Keep top shadow */
         z-index: 10;
-        padding: 0; /* Padding applied to inner wrapper */
-        border: none;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        background-color: #202124;
-        flex-shrink: 0; /* Important: Don't let bottom panel shrink */
-        /* Visibility handled by JS */
-        display: none; /* Default hidden */
-        /* Keep internal layout styles (.info-content-wrapper, etc.) */
+        display: none; /* Keep initial hide state */
+        opacity: 1;
+        transition: none;
+        pointer-events: auto;
+        backdrop-filter: blur(5px); /* Match blur */
+        -webkit-backdrop-filter: blur(5px);
+        border: none; /* Remove side borders */
+        /* border-top: 1px solid rgba(255, 255, 255, 0.1); Optional top border */
+        /* --- Flex Properties --- */
+        flex-shrink: 0;
+        box-sizing: border-box; /* Ensure padding included */
     }
-    #info-panel.visible { /* JS uses display:block now */
+    #info-panel.visible {
         display: block;
+        opacity: 1;
     }
-    /* Adjust elements inside bottom panel */
-    #info-panel h2 { /* Country Name */
-        font-size: 1.2em;
+
+    /* Adjust Content Inside Bottom Panel */
+    /* Remove wrapper and columns if layout is simpler */
+    #info-panel .info-content-wrapper {
+         display: block; /* Revert from flex */
+         padding: 0; /* Remove wrapper padding */
+         gap: 0;
+    }
+    #info-panel .info-flag-column {
+         /* Float flag or use different layout */
+         float: right; /* Example: float right */
+         width: 60px; /* Adjust size */
+         margin: 0 0 5px 10px; /* Top, Right, Bottom, Left */
+    }
+    #info-panel .info-flag-column img {
+         width: 100%;
+         height: auto;
+         border-radius: 4px;
+         border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    #info-panel .info-flag-column .no-flag {
+         font-size: 0.7em;
+         color: #888;
+         text-align: center;
+    }
+
+    #info-panel .info-text-column {
+         /* No longer needs flex properties */
+         min-width: auto;
+         width: auto;
+         /* Text flows around floated flag */
+    }
+
+    #info-panel h2 { /* Title (was panel-country-name) */
+        font-size: 1.3em;
         text-align: left;
-        margin-bottom: 5px;
+        margin: 0 0 8px 0;
+        color: #fff;
+        font-weight: 500;
+        /* Clear float if needed */
+        /* clear: both; */ /* Add if text doesn't wrap below flag properly */
     }
     #info-panel hr {
         margin: 8px 0;
-    }
-    #info-panel img { /* Flag */
-        width: 40px;
-        margin-bottom: 8px;
-        float: right; /* Example: float flag right */
-        margin-left: 10px;
-    }
-    #info-panel p {
-        font-size: 0.85em;
-        line-height: 1.4;
-        margin-bottom: 6px;
-    }
-
-    /* --- New Mobile Info Panel Inner Layout --- */
-    #info-panel .info-content-wrapper {
-        display: flex;
-        padding: 10px;
-        gap: 10px;
-    }
-
-    #info-panel .info-flag-column {
-        flex: 0 0 150px; /* Don't grow, don't shrink, base width 150px */
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-    }
-    #info-panel .info-flag-column img {
-        width: 100%; /* Flag still fills its column */
-        height: auto;
-        border-radius: 4px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        float: none;
-        margin: 0;
-    }
-    #info-panel .info-flag-column .no-flag {
-        font-size: 0.8em; /* Slightly bigger fallback text */
-        color: #888;
-        text-align: center;
-        padding-top: 10px; /* Add some padding if no flag */
-    }
-
-
-    #info-panel .info-text-column {
-        flex: 1 1 auto;
-        min-width: 0;
-    }
-
-    /* Adjust elements inside text column */
-    #info-panel .info-text-column h2 { /* Country Name */
-        font-size: 1.2em;
-        text-align: left;
-        margin: 0 0 5px 0; /* Adjust margin */
-        color: #fff; /* Ensure color */
-        font-weight: 500;
-    }
-    #info-panel .info-text-column hr {
-        margin: 5px 0;
         border-top: 1px solid rgba(255, 255, 255, 0.2);
+        clear: both; /* Ensure HR clears the float */
     }
-    #info-panel .info-text-column #panel-country-facts p {
-        font-size: 0.85em;
+    #info-panel #panel-country-facts p {
+        font-size: 0.9em;
         line-height: 1.4;
-        margin: 0 0 6px 0; /* Reset top margin */
-        color: #e0e0e0; /* Ensure color */
+        margin: 0 0 8px 0;
+        color: #e0e0e0;
     }
-    #info-panel .info-text-column #panel-country-facts p strong {
-        color: #8ab4f8; /* Keep highlight */
+     #info-panel #panel-country-facts p strong {
+          color: #8ab4f8;
+     }
+
+
+    /* --- Keep Toggles Wrapper (Side-by-Side on Mobile) --- */
+    .toggles-wrapper {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .toggles-wrapper .toggle-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px;
+        background-color: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        margin-bottom: 0;
+    }
+    .toggles-wrapper .toggle-container label {
+        margin-right: 5px;
+        font-size: 0.85em;
+        white-space: nowrap;
+    }
+    .toggles-wrapper .toggle-container input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
     }
 
 
-    /* --- Hide Hover Effects on Mobile --- */
-    @media (hover: none) {
-        #left-panel #guess-button:hover:not(:disabled),
-        #left-panel #next-button:hover {
-            /* Disable hover effects if needed */
-            background-color: initial; /* Or set specific non-hover colors */
-        }
+    /* --- Button Container (Reset for Mobile) --- */
+    #button-container {
+        max-height: none;
+        overflow: visible;
+        padding-top: 5px;
+        margin-top: 10px;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+        width: 100%;
+        box-sizing: border-box;
     }
+
+    /* Keep Button styles */
+     #left-panel #guess-button, #left-panel #next-button {
+         padding: 10px 15px;
+         font-size: 0.9em;
+         border-radius: 14px;
+     }
+
+
+    /* ... (Map Container, Info Panel styles) ... */
 }
 
-/* --- Keep Desktop Hover Effects --- */
+/* --- Keep Desktop Styles (Overlay Layout) --- */
+/* Ensure desktop styles outside the media query are still correct */
 @media (hover: hover) and (min-width: 769px) {
     /* Put existing :hover styles inside here */
     #left-panel #guess-button:hover:not(:disabled) {
@@ -437,4 +507,24 @@ body {
 }
 #info-panel p { /* Desktop facts */
     /* ... */
-} 
+}
+
+/* --- Desktop Styles --- */
+/* Remove Actions Toggle button hide style if present */
+/* #actions-toggle-button { display: none; } */
+
+/* Ensure button container is styled correctly on desktop */
+#button-container {
+     max-height: none; /* Already set */
+     overflow: visible; /* Already set */
+     padding-top: 15px; /* Desktop padding */
+     margin-top: auto; /* Desktop margin */
+     display: flex;
+     gap: 15px;
+     justify-content: center;
+     width: auto; /* Desktop auto width */
+     max-width: 100%;
+     box-sizing: border-box;
+     flex-wrap: nowrap; /* Prevent wrapping on desktop */
+}
+/* ... (Rest of desktop styles) ... */ 
