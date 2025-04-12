@@ -9,6 +9,7 @@ const infoPanelElement = document.getElementById('info-panel');
 const panelCountryName = document.getElementById('panel-country-name');
 const panelCountryFacts = document.getElementById('panel-country-facts');
 const cloudToggleCheckbox = document.getElementById('cloud-toggle');
+const shadowToggleCheckbox = document.getElementById('shadow-toggle');
 
 // --- Game State & Data ---
 let score = 0;
@@ -29,7 +30,8 @@ let currentDistanceLine = null;
 
 // --- Three.js Variables ---
 let scene, camera, renderer, globe, controls, raycaster, mouse;
-let sunLight; // Defined if needed globally
+let sunLight = null; // <-- Declare DirectionalLight globally
+let ambientLight = null; // <-- Declare AmbientLight globally
 
 // --- Constants ---
 const GLOBE_RADIUS = 5;
@@ -143,6 +145,8 @@ function initMap() {
     // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(mapContainer.clientWidth, mapContainer.clientHeight);
+    renderer.shadowMap.enabled = shadowToggleCheckbox.checked; // Set initial state
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mapContainer.appendChild(renderer.domElement);
 
     // --- Starfield Background ---
@@ -172,48 +176,32 @@ function initMap() {
     scene.add(stars);
     // --- End Starfield ---
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Adjusted ambient light
+    // --- Lighting Setup ---
+    // Determine initial intensities based on checkbox
+    const initialShadowState = shadowToggleCheckbox.checked;
+    const initialAmbientIntensity = initialShadowState ? 0.6 : 1.2; // Lower if shadows ON, higher if OFF
+    const initialSunIntensity = 1.0; // Keep sun intensity constant for now
+
+    ambientLight = new THREE.AmbientLight(0xffffff, initialAmbientIntensity);
     scene.add(ambientLight);
-    // Remove or comment out old directional light:
-    // const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    // directionalLight.position.set(5, 3, 5);
-    // scene.add(directionalLight);
 
-    // --- Sun Light Source ---
-    const sunLight = new THREE.PointLight(0xffffff, 1.5, SUN_DISTANCE * 2); // Color, Intensity, Distance
-    sunLight.position.set(0, 0, SUN_DISTANCE); // Position far along Z axis
-    scene.add(sunLight);
+    sunLight = new THREE.DirectionalLight(0xffffff, initialSunIntensity);
+    sunLight.position.set(5, 3, 5).normalize();
+    sunLight.castShadow = true;
+    // Configure Shadow Camera
+    sunLight.shadow.camera.left = -20; // Adjust as needed
+    sunLight.shadow.camera.right = 20;
+    sunLight.shadow.camera.top = 20;
+    sunLight.shadow.camera.bottom = -20;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 50;
 
-    // --- Lens Flare ---
-    try {
-        const textureLoader = new THREE.TextureLoader();
-        const textureFlare0 = textureLoader.load(LENSFLARE_TEXTURE0_PATH);
-        const textureFlare3 = textureLoader.load(LENSFLARE_TEXTURE3_PATH);
-
-        if (!THREE.Lensflare || !THREE.LensflareElement) {
-             console.error("Lensflare or LensflareElement not loaded. Check script includes.");
-             throw new Error("Lensflare scripts missing.");
-        }
-
-        const lensflare = new THREE.Lensflare();
-
-        // Main flare
-        lensflare.addElement(new THREE.LensflareElement(textureFlare0, 700, 0, sunLight.color)); // size, distance (0=at light source), color
-
-        // Add some 'ghost' flares
-        lensflare.addElement(new THREE.LensflareElement(textureFlare3, 60, 0.6)); // size, distance (0-1, 1=opposite side)
-        lensflare.addElement(new THREE.LensflareElement(textureFlare3, 70, 0.7));
-        lensflare.addElement(new THREE.LensflareElement(textureFlare3, 120, 0.9));
-        lensflare.addElement(new THREE.LensflareElement(textureFlare3, 70, 1.0));
-
-        sunLight.add(lensflare); // Attach the lensflare to the light source
-        console.log("Lens flare added to sun light.");
-
-    } catch (error) {
-        console.error("Failed to create lens flare:", error);
+    if (initialShadowState) {
+        scene.add(sunLight);
+        console.log(`Shadows initially ON. Ambient: ${initialAmbientIntensity}`);
+    } else {
+        console.log(`Shadows initially OFF. Ambient: ${initialAmbientIntensity}`);
     }
-    // --- End Lens Flare ---
 
     // Globe
     const globeGeometry = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64);
@@ -232,6 +220,8 @@ function initMap() {
         metalness: 0.2
     });
     globe = new THREE.Mesh(globeGeometry, material);
+    // --- Globe Receives Shadows ---
+    globe.receiveShadow = true; // Globe can always receive shadows if enabled
     scene.add(globe);
 
     // --- Cloud Layer ---
@@ -254,6 +244,10 @@ function initMap() {
         });
 
         cloudMesh = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        // --- Clouds Receive Shadows ---
+        cloudMesh.receiveShadow = true; // Clouds can always receive shadows if enabled
+        // --- Clouds Can Cast Shadows (optional, can be expensive) ---
+        // cloudMesh.castShadow = true;
         cloudMesh.visible = cloudToggleCheckbox.checked;
         scene.add(cloudMesh);
         console.log(`Cloud layer added. Initial visibility: ${cloudMesh.visible}`);
@@ -296,7 +290,7 @@ function initMap() {
     // Start animation loop
     animate();
 
-    console.log("Map initialized with pin drag/hover and sun.");
+    console.log("Map initialized with shadows enabled.");
 }
 
 function onWindowResize() {
@@ -893,9 +887,9 @@ function onPointerUp(event) {
 // --- Initialization ---
 async function initGame() {
     console.log("Initializing game...");
-    setupEventListeners(); // <-- Call function to set up ALL listeners
+    setupEventListeners(); // Sets up all listeners including shadow toggle
     hideCountryInfoPanel();
-    initMap(); // Creates scene, globe, clouds (visibility set based on checkbox)
+    initMap(); // Creates scene, enables/disables shadows based on checkbox default
 
     await loadCountryData();
     await loadFactsData();
@@ -977,8 +971,8 @@ function hideCountryInfoPanel() {
 function setupEventListeners() {
     guessButton.addEventListener('click', handleGuessConfirm);
     nextButton.addEventListener('click', startNewRound);
-    // Add listener for cloud toggle
     cloudToggleCheckbox.addEventListener('change', handleCloudToggle);
+    shadowToggleCheckbox.addEventListener('change', handleShadowToggle);
 
     // Pointer/Map interaction listeners (in initMap or here)
     // mapContainer.addEventListener('click', handleMapClick);
@@ -996,5 +990,32 @@ function handleCloudToggle(event) {
         console.log(`Cloud visibility set to: ${cloudMesh.visible}`);
     } else {
         console.warn("Cloud toggle changed, but cloudMesh doesn't exist.");
+    }
+}
+
+// --- Handler function for the shadow toggle ---
+function handleShadowToggle(event) {
+    const shadowsEnabled = event.target.checked;
+    renderer.shadowMap.enabled = shadowsEnabled; // Toggle renderer shadows
+
+    if (shadowsEnabled) {
+        // --- Shadows ON ---
+        if (sunLight) {
+            scene.add(sunLight); // Add directional light back
+            console.log("Shadows ON: Added sunLight.");
+        } else {
+            console.error("Cannot enable shadows: sunLight not initialized.");
+        }
+        // Optional: Lower ambient light intensity
+        if (ambientLight) ambientLight.intensity = 0.6; // e.g., moderate ambient
+
+    } else {
+        // --- Shadows OFF ---
+        if (sunLight) {
+            scene.remove(sunLight); // Remove directional light
+            console.log("Shadows OFF: Removed sunLight.");
+        }
+        // Optional: Increase ambient light intensity for even illumination
+        if (ambientLight) ambientLight.intensity = 1.2; // e.g., brighter ambient
     }
 } 
