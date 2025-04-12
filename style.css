@@ -16,16 +16,18 @@ body {
     align-items: center; /* Center items horizontally (affects button/info if not full width) */
 }
 
-/* Left Panel Styling */
+/* --- Base Styles (Desktop First) --- */
+
+/* Left Panel Base Styles (Desktop Overlay) */
 #left-panel {
     position: absolute;
-    padding: 5px;
+    left: 15px;
+    top: 15px;
     width: 300px;
-
     max-height: calc(100vh - 30px);
     overflow-y: auto;
-    background-color: rgba(40, 40, 40, 0.85); /* Darker, slightly transparent */
-    color: #e0e0e0; /* Lighter text */
+    background-color: rgba(40, 40, 40, 0.85);
+    color: #e0e0e0;
     padding: 20px;
     border-radius: 24px;
     box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
@@ -34,9 +36,14 @@ body {
     flex-direction: column;
     gap: 15px;
     pointer-events: auto;
-    backdrop-filter: blur(5px); /* Optional: Frosted glass effect (check browser support) */
-    -webkit-backdrop-filter: blur(5px); /* Safari */
-    border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border */
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    /* --- Ensure no centering margins --- */
+    margin-left: initial; /* Reset potential auto margin */
+    margin-right: initial; /* Reset potential auto margin */
+    /* --- Ensure no centering transforms --- */
+    transform: none; /* Reset potential transform */
 }
 
 /* Style adjustments for elements moved into left-panel */
@@ -258,6 +265,8 @@ body {
         -webkit-backdrop-filter: blur(5px);
         flex-shrink: 0;
         padding-bottom: 15px; /* Ensure space at bottom */
+        margin-left: 0;
+        margin-right: 0;
     }
 
     /* Adjust Content Inside Top Panel */
