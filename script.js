@@ -27,6 +27,7 @@ let targetRings = []; // <-- Array to hold ring meshes
 let targetRingClock = new THREE.Clock(); // <-- Clock for animation timing
 let cloudMesh = null; // <-- Add variable for clouds
 let currentDistanceLine = null;
+let highlightedBoundaryLines = []; // <-- **** ENSURE THIS LINE EXISTS AND IS UNCOMMENTED ****
 
 // --- Three.js Variables ---
 let scene, camera, renderer, globe, controls, raycaster, mouse;
@@ -39,17 +40,18 @@ const MARKER_COLOR = 0xff0000; // Red
 const MARKER_SIZE = 0.1;
 const STAR_COUNT = 5000;
 const STARFIELD_RADIUS = 500; // Make it much larger than the globe and camera distance
-const PIN_SCALE_DEFAULT = 0.05; // Or your current adjusted value
-const PIN_SCALE_HOVER = 0.06;   // Or your current adjusted value
+const PIN_SCALE_DEFAULT = 0.05;
+const PIN_SCALE_HOVER = 0.06;
+const PIN_SCALE_MOBILE = 0.08; // <-- New constant for mobile size
 const PIN_IMAGE_PATH = 'assets/pin.svg';
-const PIN_OFFSET = 0.1; // Keep or adjust pin offset from surface
-
+const PIN_OFFSET = 0.02; // <<< CHANGED: Significantly reduce pin offset
 const TARGET_RING_COLOR = 0x00ff00; // Green rings
 const NUM_TARGET_RINGS = 4;       // How many rings in the pulse effect
 const TARGET_RING_MAX_SCALE = 0.4; // Max size the rings expand to (adjust)
 const TARGET_RING_THICKNESS = 0.01; // How thick the ring geometry is
 const PULSE_DURATION = 1.5; // Seconds for one pulse cycle (expand/fade)
 const TARGET_OFFSET = 0.06; // Keep offset from surface
+const DISTANCE_LINE_OFFSET = 0.0015; // <<< ADDED: Specific small offset for the distance line
 
 const LINE_ANIMATION_DURATION = 1000;
 const CLOUD_TEXTURE_PATH = 'assets/4k_earth_clouds.jpg'; // <-- Point to your file
@@ -68,6 +70,12 @@ const LINE_AND_TARGET_COLOR = 0xffff00; // Yellow
 
 // --- GraphQL API Interaction ---
 const GRAPHQL_ENDPOINT = 'https://countries-274616.ew.r.appspot.com'; // From graphcountries README
+
+// --- NEW Helper Function for Pin Scale ---
+function getPinScale() {
+    const isMobile = window.innerWidth <= 768;
+    return isMobile ? PIN_SCALE_MOBILE : PIN_SCALE_DEFAULT;
+}
 
 async function fetchCountryDataGraphQL(countryName) {
     console.log(`Fetching data from graphcountries for: ${countryName}`);
@@ -416,52 +424,48 @@ function getPointFromLatLon(lat, lon) {
     return new THREE.Vector3(x, y, z);
 }
 
+function deg2rad(deg) {
+    return deg * (Math.PI / 180);
+}
+
 // --- Country Data ---
 async function loadCountryData() {
-    console.log("Loading country data from GeoJSON...");
+    console.log("Loading country data list from GeoJSON...");
     try {
         const response = await fetch('assets/countries.geojson');
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const geojsonData = await response.json();
 
         countriesData = geojsonData.features.map(feature => {
-            if (!feature.geometry || !feature.geometry.coordinates || !feature.properties) {
-                // console.warn("Skipping feature with missing geometry or properties:", feature); // Optional: keep or remove log
-                return null;
-            }
-            // console.log("Processing properties:", feature.properties); // Optional: keep or remove log
-
             const [lon, lat] = feature.geometry.coordinates;
             const name = feature.properties.COUNTRY || feature.properties.name || feature.properties.ADMIN || feature.properties.NAME_EN;
-
-            // --- MODIFIED LINE ---
-            // Check for 'ISO' first, then fall back to others
             const alpha2Code = feature.properties.ISO || feature.properties.ISO_A2 || feature.properties.iso_a2 || feature.properties.alpha2Code || feature.properties.ISO_A2_EH;
-
-            if (!name || typeof lat !== 'number' || typeof lon !== 'number') {
-                // console.warn("Skipping feature with missing name or invalid coordinates:", feature.properties); // Optional log
-                return null;
-            }
-             const validAlpha2Code = (alpha2Code && typeof alpha2Code === 'string' && alpha2Code.length === 2) ? alpha2Code : null;
-             if (!validAlpha2Code && name) {
-                 console.warn(`Could not find valid alpha2Code for country: ${name}`, feature.properties); // Keep this warning
-             }
-
-            return { name, lat, lon, alpha2Code: validAlpha2Code };
+            if (!name || typeof lat !== 'number' || typeof lon !== 'number') return null;
+            const validAlpha2Code = (alpha2Code && typeof alpha2Code === 'string' && alpha2Code.length === 2) ? alpha2Code.toLowerCase() : null;
+            if (!validAlpha2Code && name) console.warn(`Could not find valid alpha2Code for country: ${name}`, feature.properties);
+            return { name, lat, lon, alpha2Code: validAlpha2Code, geometry: null };
         }).filter(country => country !== null);
 
         if (countriesData.length === 0) {
             console.error("No valid country data extracted from GeoJSON.");
+            countryNameElement.textContent = "Error loading countries!";
+             guessButton.disabled = true;
+             nextButton.disabled = true;
         } else {
-            console.log(`Loaded ${countriesData.length} countries.`);
+            console.log(`Loaded ${countriesData.length} countries from list.`);
         }
 
     } catch (error) {
-        console.error("Failed to load or parse country data:", error);
+        console.error("Failed to load or parse country list data:", error);
         countryNameElement.textContent = "Error loading countries!";
         countriesData = [];
+         guessButton.disabled = true;
+         nextButton.disabled = true;
     }
 }
+
+// --- NEW Function to populate dropdown ---
+// function populateCountryDropdown() { ... } // Remove this entire function
 
 // --- NEW Function to load facts ---
 async function loadFactsData() {
@@ -480,6 +484,115 @@ async function loadFactsData() {
     }
 }
 
+// --- Helper function to convert polygon coordinates to 3D points ---
+function getPolygonPoints3D(polygonCoords, offset) {
+    const points3D = [];
+    // polygonCoords is an array of [lon, lat] pairs
+    for (const coord of polygonCoords) {
+        const lon = coord[0];
+        const lat = coord[1];
+        if (typeof lon === 'number' && typeof lat === 'number') {
+            points3D.push(getPointFromLatLon(lat, lon).normalize().multiplyScalar(GLOBE_RADIUS + offset));
+        } else {
+            console.warn("Skipping invalid coordinate in polygon:", coord);
+        }
+    }
+    return points3D;
+}
+
+// --- Function to highlight country boundaries ---
+function highlightCountryBoundary(countryGeometry) {
+    console.log("[highlightCountryBoundary] Attempting to highlight boundary...");
+
+    if (!countryGeometry) {
+        console.warn("[highlightCountryBoundary] Cannot highlight boundary: Geometry data missing.");
+        return;
+    }
+    removeHighlightedBoundaries(); // Call cleanup first
+
+    const boundaryMaterial = new THREE.LineBasicMaterial({
+        color: LINE_AND_TARGET_COLOR, // Yellow
+        linewidth: 1.5, // Keep a reasonable width
+        depthTest: true,        // <<< CHANGED: Enable depth testing
+        depthWrite: false,       // <<< KEPT: Don't write to depth buffer
+        transparent: true,     // Keep transparency option
+        opacity: 0.9,          // Make slightly less opaque if desired
+
+        polygonOffset: true,     // <<< ADDED: Enable polygon offset
+        polygonOffsetFactor: -1.0, // <<< ADDED: Push towards camera (negative value)
+        polygonOffsetUnits: -1.0   // <<< ADDED: Additional offset factor
+    });
+    // --- Reduce the offset significantly ---
+    const boundaryOffset = 0.001; // <<< CHANGED: Very small offset from surface
+    // -------------------------------------
+    const type = countryGeometry.type;
+    const coordinates = countryGeometry.coordinates;
+
+    console.log(`[highlightCountryBoundary] Geometry type: ${type}`);
+
+    try {
+        let linesAdded = 0;
+        if (type === 'Polygon') {
+            const outerRingCoords = coordinates[0];
+            console.log(`[highlightCountryBoundary] Processing Polygon with ${outerRingCoords.length} coordinates.`);
+            const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use small offset
+            console.log(`[highlightCountryBoundary] Converted Polygon to ${points3D.length} 3D points:`, points3D.slice(0, 5));
+
+            if (points3D.length >= 2) {
+                const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
+                const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial);
+                scene.add(lineLoop);
+                console.log("[highlightCountryBoundary] Added Polygon LineLoop to scene.");
+                highlightedBoundaryLines.push(lineLoop);
+                linesAdded++;
+            } else {
+                 console.warn("[highlightCountryBoundary] Not enough valid points for Polygon boundary.");
+            }
+
+        } else if (type === 'MultiPolygon') {
+            console.log(`[highlightCountryBoundary] Processing MultiPolygon with ${coordinates.length} parts.`);
+            for (let i = 0; i < coordinates.length; i++) {
+                const polygon = coordinates[i];
+                const outerRingCoords = polygon[0];
+                 console.log(`[highlightCountryBoundary]   Part ${i}: ${outerRingCoords.length} coordinates.`);
+                const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use small offset
+                 console.log(`[highlightCountryBoundary]   Part ${i}: Converted to ${points3D.length} 3D points:`, points3D.slice(0, 5));
+
+                if (points3D.length >= 2) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
+                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone());
+                    scene.add(lineLoop);
+                     console.log(`[highlightCountryBoundary] Added MultiPolygon LineLoop (Part ${i}) to scene.`);
+                    highlightedBoundaryLines.push(lineLoop);
+                     linesAdded++;
+                } else {
+                     console.warn(`[highlightCountryBoundary] Not enough valid points for MultiPolygon part ${i}.`);
+                }
+            }
+        } else {
+            console.warn(`[highlightCountryBoundary] Cannot highlight boundary: Unsupported geometry type "${type}"`);
+        }
+         console.log(`[highlightCountryBoundary] Highlighting finished. Total lines added: ${linesAdded}. Array length: ${highlightedBoundaryLines.length}`);
+
+    } catch (error) {
+         console.error("[highlightCountryBoundary] Error creating boundary highlight geometry:", error);
+         removeHighlightedBoundaries();
+    }
+}
+
+// --- Function to remove highlighted boundaries ---
+function removeHighlightedBoundaries() {
+    if (highlightedBoundaryLines.length > 0) {
+        console.log("Removing previous boundary highlights...");
+        highlightedBoundaryLines.forEach(line => {
+            if (line.geometry) line.geometry.dispose();
+            if (line.material) line.material.dispose();
+            scene.remove(line);
+        });
+        highlightedBoundaryLines = [];
+    }
+}
+
 // --- Game Logic ---
 function selectRandomCountry() {
     if (countriesData.length === 0) {
@@ -490,23 +603,73 @@ function selectRandomCountry() {
     return countriesData[randomIndex];
 }
 
-function startNewRound() {
+async function loadCountryBoundary(country) {
+    if (!country || !country.name) {
+        console.error("Cannot load boundary for invalid country object.");
+        return false;
+    }
+    // Simple filename generation: lowercase, replace spaces with underscores
+    const filename = country.name.toLowerCase().replace(/ /g, '_') + '.json';
+    const filepath = `assets/countries/${filename}`;
+    // --- ADD THIS LOG ---
+    console.log(`[loadCountryBoundary] Generated filepath: ${filepath} for country: ${country.name}`);
+    // --------------------
+    console.log(`[loadCountryBoundary] Attempting to load boundary data from: ${filepath}`);
+
+    try {
+        const response = await fetch(filepath);
+        console.log(`[loadCountryBoundary] Fetch status for ${filepath}: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status} for ${filepath}`);
+        }
+        const boundaryData = await response.json();
+        console.log(`[loadCountryBoundary] Successfully fetched and parsed ${filepath}`);
+
+        if (boundaryData && boundaryData.features && boundaryData.features.length > 0 && boundaryData.features[0].geometry) {
+            const geomType = boundaryData.features[0].geometry.type;
+             console.log(`[loadCountryBoundary] Found geometry type: ${geomType} for ${country.name}`);
+            if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+                 country.geometry = boundaryData.features[0].geometry;
+                 console.log(`[loadCountryBoundary] Successfully stored boundary geometry (${geomType}) for ${country.name}`);
+                 return true;
+            } else {
+                 console.warn(`[loadCountryBoundary] Loaded file for ${country.name}, but geometry type is ${geomType}, not Polygon or MultiPolygon.`);
+                 country.geometry = null;
+                 return false;
+            }
+        } else {
+             console.error(`[loadCountryBoundary] Invalid GeoJSON structure in ${filepath}`);
+            throw new Error(`Invalid GeoJSON structure in ${filepath}`);
+        }
+    } catch (error) {
+        console.error(`[loadCountryBoundary] Failed to load or parse boundary data for ${country.name}:`, error);
+        country.geometry = null;
+        return false;
+    }
+}
+
+async function startNewRound() {
     console.log("Starting new round...");
     nextButton.style.display = 'none';
     isLineAnimating = false;
     hideCountryInfoPanel();
     isGuessLocked = false;
 
-    // Remove previous pin, line, and rings
+    // Remove previous visuals
     removePin();
     removeTargetRings();
+    removeHighlightedBoundaries();
     if (currentDistanceLine) {
         scene.remove(currentDistanceLine);
+        if(currentDistanceLine.geometry) currentDistanceLine.geometry.dispose();
+        if(currentDistanceLine.material) currentDistanceLine.material.dispose();
         currentDistanceLine = null;
     }
 
-    // ... (rest of selecting country, updating UI) ...
+    // --- Use random selection again ---
     currentCountry = selectRandomCountry();
+    // ---------------------------------
+
     if (!currentCountry) {
         console.error("Failed to select new country in startNewRound.");
         countryNameElement.textContent = "Error! Reload?";
@@ -514,11 +677,21 @@ function startNewRound() {
         nextButton.disabled = true;
         return;
     }
+
     countryNameElement.textContent = currentCountry.name;
     distanceElement.textContent = 'N/A';
     guessButton.disabled = true;
 
-    console.log(`New round: Guess ${currentCountry.name}`);
+    // Load boundary data
+    console.log(`[startNewRound] About to load boundary for: ${currentCountry.name}`);
+    const boundaryLoaded = await loadCountryBoundary(currentCountry);
+    console.log(`[startNewRound] Boundary loading completed for ${currentCountry.name}. Success: ${boundaryLoaded}`);
+    console.log(`[startNewRound] currentCountry.geometry after load attempt:`, currentCountry.geometry);
+    if (!boundaryLoaded) {
+        console.warn(`[startNewRound] Could not load boundary for ${currentCountry.name}. Scoring will rely on distance only.`);
+    }
+
+    console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}.`);
 }
 
 function handleMapClick(event) {
@@ -560,7 +733,6 @@ function handleMapClick(event) {
     }
 }
 
-
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371; // Radius of the Earth in km
     const dLat = deg2rad(lat2 - lat1);
@@ -571,10 +743,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Math.round(R * c);
-}
-
-function deg2rad(deg) {
-    return deg * (Math.PI / 180);
 }
 
 function calculateScore(distance) {
@@ -589,79 +757,102 @@ function handleGuessConfirm() {
          return;
     }
     guessButton.disabled = true;
-    nextButton.style.display = 'none'; // Ensure next button is hidden while processing
-
-    isGuessLocked = true; // <-- LOCK the pin position here
+    nextButton.style.display = 'none';
+    isGuessLocked = true;
 
     console.log("Confirming guess...");
+    console.log("Current country geometry before scoring/highlighting:", currentCountry.geometry);
 
-    // --- Log the coordinates being used ---
-    console.log(`Calculating distance for Guess: lat=${playerGuess.lat.toFixed(4)}, lon=${playerGuess.lon.toFixed(4)}`);
-    console.log(`Calculating distance for Answer: lat=${currentCountry.lat.toFixed(4)}, lon=${currentCountry.lon.toFixed(4)}`);
-    // --- End Log ---
+    let roundScore = 0;
+    let distance = null;
 
-    // Calculate distance using the playerGuess object
-    const distance = calculateDistance(
-        playerGuess.lat, playerGuess.lon,
-        currentCountry.lat, currentCountry.lon
-    );
-    const roundScore = calculateScore(distance);
+    // Scoring Logic (now uses globally defined isPointInCountry)
+    if (currentCountry.geometry) {
+        const isInside = isPointInCountry(playerGuess, currentCountry.geometry);
+        if (isInside) {
+             console.log("Guess is INSIDE country boundary!");
+             roundScore = 1000;
+             distance = 0;
+         } else {
+             console.log("Guess is OUTSIDE country boundary. Calculating score by distance.");
+             distance = calculateDistance(playerGuess.lat, playerGuess.lon, currentCountry.lat, currentCountry.lon);
+             roundScore = calculateScore(distance);
+         }
+    } else {
+        console.warn("No boundary data for country, calculating score by distance only.");
+        distance = calculateDistance(playerGuess.lat, playerGuess.lon, currentCountry.lat, currentCountry.lon);
+        roundScore = calculateScore(distance);
+    }
 
     score += roundScore;
     scoreElement.textContent = score;
-    distanceElement.textContent = `${distance}`;
-
+    distanceElement.textContent = distance !== null ? `${distance}` : 'Error';
     console.log(`Guessed: ${playerGuess.lat.toFixed(2)}, ${playerGuess.lon.toFixed(2)}`);
-    console.log(`Actual: ${currentCountry.lat.toFixed(2)}, ${currentCountry.lon.toFixed(2)}`);
+    console.log(`Actual (Center): ${currentCountry.lat.toFixed(2)}, ${currentCountry.lon.toFixed(2)}`);
     console.log(`Distance: ${distance} km, Score: ${roundScore}`);
 
     // --- Add the CURVED distance line ---
     const startVec = pinSprite.position.clone().normalize(); // Guess position (normalized)
-
-    // Calculate end position using the REVERTED function
-    const endVec = getPointFromLatLon(currentCountry.lat, currentCountry.lon).normalize(); // Use reverted function and normalize
+    const endVec = getPointFromLatLon(currentCountry.lat, currentCountry.lon).normalize(); // Line to center
 
     const points = [];
     const numPoints = 30;
-    const arcOffset = TARGET_OFFSET; // Or PIN_OFFSET, assuming they are the same
+    // const arcOffset = TARGET_OFFSET; // Use specific line offset instead
+    const arcOffset = DISTANCE_LINE_OFFSET; // <<< CHANGED: Use the new smaller offset
 
     for (let i = 0; i <= numPoints; i++) {
         const t = i / numPoints;
         const intermediateVec = new THREE.Vector3().lerpVectors(startVec, endVec, t);
         intermediateVec.normalize();
-        intermediateVec.multiplyScalar(GLOBE_RADIUS + arcOffset);
+        intermediateVec.multiplyScalar(GLOBE_RADIUS + arcOffset); // Use the smaller offset
         points.push(intermediateVec);
     }
 
     const curveGeometry = new THREE.BufferGeometry().setFromPoints(points);
-    const curveMaterial = new THREE.LineBasicMaterial({ color: LINE_AND_TARGET_COLOR, linewidth: 2 });
+    // --- Modify Line Material ---
+    const curveMaterial = new THREE.LineBasicMaterial({
+        color: LINE_AND_TARGET_COLOR,
+        linewidth: 2, // Keep width reasonable
+        depthTest: true,        // <<< ADDED
+        depthWrite: false,       // <<< ADDED
+        transparent: true,      // Keep transparency
+        opacity: 0.9,           // Keep opacity
+
+        polygonOffset: true,     // <<< ADDED
+        polygonOffsetFactor: -0.5, // <<< ADDED: Slightly less offset than boundary?
+        polygonOffsetUnits: -0.5   // <<< ADDED: Adjust if needed
+    });
+    // ---------------------------
 
     if (currentDistanceLine) {
+        // Dispose previous geometry/material before removing
+        if(currentDistanceLine.geometry) currentDistanceLine.geometry.dispose();
+        if(currentDistanceLine.material) currentDistanceLine.material.dispose();
         scene.remove(currentDistanceLine);
-        // Dispose geometry/material if needed, though re-creating might be simpler here
     }
     currentDistanceLine = new THREE.Line(curveGeometry, curveMaterial);
-
-    // --- Animation Setup ---
-    // 1. Set initial draw range to zero vertices
     currentDistanceLine.geometry.setDrawRange(0, 0);
-
-    // 2. Add the line to the scene (it's invisible initially)
     scene.add(currentDistanceLine);
+    lineTotalPoints = points.length;
+    lineAnimationStartTime = performance.now();
+    isLineAnimating = true;
 
-    // 3. Store total points and start time for animation
-    lineTotalPoints = points.length; // Store how many points define the full line
-    lineAnimationStartTime = performance.now(); // Get high-resolution timestamp
-    isLineAnimating = true; // Set the flag to start animation in the animate() loop
-    // --- End Animation Setup ---
+    // Highlight Boundary
+    if (currentCountry.geometry) {
+        highlightCountryBoundary(currentCountry.geometry);
+    } else {
+        console.warn("Skipping boundary highlight because geometry is missing.");
+    }
 
-    nextButton.style.display = 'block'; // Show the next button
+    nextButton.style.display = 'block';
 }
 
 // --- Marker/Pin/Target Handling ---
 
 // Function to create or update the pin sprite
 function createOrUpdatePin(position3D) {
+    const currentScale = getPinScale(); // <-- Get scale based on device
+
     if (!pinSprite) {
         // Create sprite material FIRST, using the constant
         const pinMaterial = new THREE.SpriteMaterial({
@@ -674,7 +865,7 @@ function createOrUpdatePin(position3D) {
 
         // Create the sprite object and assign it to the global variable
         pinSprite = new THREE.Sprite(pinMaterial); // <-- Assign BEFORE texture load
-        pinSprite.scale.set(PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT);
+        pinSprite.scale.set(currentScale, currentScale, currentScale); // <-- Use determined scale
         pinSprite.center.set(0.5, 0); // Set center immediately
 
         // Now load the texture and update the EXISTING sprite's material
@@ -698,6 +889,8 @@ function createOrUpdatePin(position3D) {
 
     } else { // Pin already exists, just update position
         pinSprite.position.copy(position3D);
+        // Optionally update scale if window resized while pin exists (might be overkill)
+        // pinSprite.scale.set(currentScale, currentScale, currentScale);
     }
     // Update player guess coordinates
     playerGuess = getLatLonFromPoint(position3D);
@@ -811,7 +1004,6 @@ function onPointerDown(event) {
         console.log(">>> Pin CLICKED & unlocked! Starting drag state."); // <-- Important log
         isDraggingPin = true;
         controls.enabled = false;
-        mapContainer.style.cursor = 'grabbing';
         pinSprite.material.color.copy(PIN_COLOR_HOVER);
     }
     // Check if map was clicked when not dragging and unlocked
@@ -833,22 +1025,15 @@ function onPointerMove(event) {
 
     // --- Hover Logic (Simplified for Mobile) ---
     const pinIntersects = pinSprite ? raycaster.intersectObject(pinSprite) : [];
+    const baseScale = getPinScale(); // <-- Get base scale for current view
 
     if (!isDraggingPin) {
         if (pinIntersects.length > 0) {
-            // --- REMOVE Scale and Color changes for hover ---
-            // pinSprite.scale.set(PIN_SCALE_HOVER, PIN_SCALE_HOVER, PIN_SCALE_HOVER);
-            // pinSprite.material.color.copy(PIN_COLOR_HOVER);
             // --- Keep Cursor Change ---
-            mapContainer.style.cursor = 'grab';
+            // mapContainer.style.cursor = 'grab';
         } else {
-            // --- REMOVE Scale and Color reset ---
-            // if (pinSprite) {
-            //    pinSprite.scale.set(PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT, PIN_SCALE_DEFAULT);
-            //    pinSprite.material.color.copy(PIN_COLOR_DEFAULT);
-            // }
             // --- Keep Cursor Change ---
-            mapContainer.style.cursor = 'auto';
+            // mapContainer.style.cursor = 'auto';
         }
     }
 
@@ -887,9 +1072,9 @@ function onPointerUp(event) {
 // --- Initialization ---
 async function initGame() {
     console.log("Initializing game...");
-    setupEventListeners(); // Sets up all listeners including actions toggle
+    setupEventListeners();
     hideCountryInfoPanel();
-    initMap(); // Creates scene, enables/disables shadows based on checkbox default
+    initMap();
 
     await loadCountryData();
     await loadFactsData();
@@ -898,8 +1083,6 @@ async function initGame() {
         startNewRound();
     } else {
         console.error("Cannot start round, no country data loaded.");
-        countryNameElement.textContent = "Failed to load countries.";
-        // Maybe disable buttons if game can't start
         guessButton.disabled = true;
         nextButton.disabled = true;
     }
@@ -1019,4 +1202,36 @@ function handleShadowToggle(event) {
         // Optional: Increase ambient light intensity for even illumination
         if (ambientLight) ambientLight.intensity = 1.2; // e.g., brighter ambient
     }
-} 
+}
+
+// --- Point-in-Polygon Logic --- // *** KEEP DEFINITIONS HERE (Before HandleGuessConfirm) ***
+function pointInPolygon(point, polygon) {
+    const x = point[0]; // lon
+    const y = point[1]; // lat
+    let isInside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i][0], yi = polygon[i][1];
+        const xj = polygon[j][0], yj = polygon[j][1];
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) isInside = !isInside;
+    }
+    return isInside;
+}
+function isPointInCountry(pointCoords, countryGeometry) {
+    if (!pointCoords || !countryGeometry) return false;
+    const point = [pointCoords.lon, pointCoords.lat];
+    const type = countryGeometry.type;
+    const coordinates = countryGeometry.coordinates;
+    if (type === 'Polygon') {
+        const outerRing = coordinates[0];
+        if (pointInPolygon(point, outerRing)) return true;
+    } else if (type === 'MultiPolygon') {
+        for (const polygon of coordinates) {
+            const outerRing = polygon[0];
+            if (pointInPolygon(point, outerRing)) return true;
+        }
+    }
+    return false;
+}
+// --- End Point-in-Polygon Logic --- 

@@ -21,8 +21,8 @@ body {
 /* Left Panel Base Styles (Desktop Overlay) */
 #left-panel {
     position: absolute;
-    left: 15px;
     top: 15px;
+    left: 15px;
     width: 300px;
     max-height: calc(100vh - 30px);
     overflow-y: auto;
@@ -56,14 +56,15 @@ body {
 }
 
 #left-panel #game-info {
-    padding: 15px; /* More padding */
-    border-radius: 16px; /* Rounded corners */
-    background-color: rgba(255, 255, 255, 0.05); /* Very subtle inner background */
+    padding: 15px;
+    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.05);
     text-align: left;
 }
 
 #left-panel #game-info p {
-    margin: 10px 0; /* More spacing */
+    width: auto;
+    margin: 10px 0;
     font-size: 1em;
     line-height: 1.5;
 }
@@ -131,28 +132,66 @@ body {
 }
 
 /* Cloud Toggle Styling */
-#left-panel .toggle-container {
+/* --- Remove old desktop styles for individual toggle containers --- */
+/* #left-panel .toggle-container { */ /* REMOVE this block */
+    /* display: flex; */
+    /* align-items: center; */
+    /* justify-content: space-between; */
+    /* padding: 12px 15px; */
+    /* background-color: rgba(255, 255, 255, 0.05); */
+    /* border-radius: 16px; */
+    /* margin-top: 0; */ /* Rely on main panel gap */
+/* } */
+/* #left-panel .toggle-container label { */ /* REMOVE this block */
+    /* margin-right: 10px; */
+    /* font-size: 1em; */
+/* } */
+/* #left-panel .toggle-container input[type="checkbox"] { */ /* REMOVE this block */
+    /* cursor: pointer; */
+    /* width: 20px; */
+    /* height: 20px; */
+    /* accent-color: #8ab4f8; */
+/* } */
+
+/* --- ADD styles for the wrapper and containers inside it (Desktop) --- */
+#left-panel .toggles-wrapper {
+    display: flex;
+    justify-content: space-between; /* Or space-around/center as preferred */
+    gap: 10px; /* Match mobile gap, or adjust for desktop (e.g., 15px) */
+    width: 100%; /* Make wrapper take full width */
+    box-sizing: border-box;
+    margin-top: 0; /* Rely on parent gap */
+    margin-bottom: 0; /* Rely on parent gap */
+}
+
+#left-panel .toggles-wrapper .toggle-container {
+    flex: 1; /* Make toggles share space equally */
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 15px; /* Adjusted padding */
+    padding: 10px 12px; /* Adjust padding for desktop */
     background-color: rgba(255, 255, 255, 0.05);
-    border-radius: 16px; /* Rounded */
-    margin-top: 0; /* Rely on main panel gap */
+    border-radius: 12px; /* Adjust border-radius */
+    box-sizing: border-box;
 }
 
-#left-panel .toggle-container label {
-    margin-right: 10px;
-    font-size: 1em;
+#left-panel .toggles-wrapper .toggle-container label {
+    margin-right: 8px;
+    font-size: 0.95em; /* Adjust font size */
+    white-space: nowrap;
+    flex-shrink: 1; /* Allow label to shrink if needed */
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Basic Checkbox - Consider replacing with a proper toggle switch CSS */
-#left-panel .toggle-container input[type="checkbox"] {
+#left-panel .toggles-wrapper .toggle-container input[type="checkbox"] {
     cursor: pointer;
-    width: 20px;
-    height: 20px;
+    width: 18px; /* Adjust size */
+    height: 18px; /* Adjust size */
     accent-color: #8ab4f8; /* Match accent blue */
+    flex-shrink: 0; /* Prevent checkbox shrinking */
 }
+/* --- END ADDED styles --- */
 
 /* Map Container - ensure it covers the whole area behind panels */
 #map-container {
@@ -168,8 +207,8 @@ body {
 /* Info Panel (Right Side) - styles remain the same */
 #info-panel {
     position: absolute;
-    top: 0;
-    right: 0;
+    top: 15px;
+    right: 15px;
     width: 280px;
     max-height: calc(100vh - 30px);
     overflow-y: auto;
@@ -248,6 +287,8 @@ body {
     /* --- Top Panel (#left-panel) --- */
     #left-panel {
         position: relative;
+        top: 0;
+        left: 0;
         width: 100%;
         padding: 25px 30px;
         box-sizing: border-box;
@@ -348,7 +389,8 @@ body {
     /* --- Bottom Panel (#info-panel): Match Top Panel Style --- */
     #info-panel {
         position: relative;
-        /* --- Size & Spacing: Full Width --- */
+        top: 0;
+        left: 0;/* --- Size & Spacing: Full Width --- */
         width: 100%; /* Full width */
         max-width: none; /* Remove max-width limit */
         margin-left: 0; /* Remove auto margins */
@@ -357,7 +399,7 @@ body {
         max-height: 45vh; /* Adjust height limit if needed */
         overflow-y: auto;
         /* --- Appearance: Match Top Panel --- */
-        background-color: rgba(40, 40, 40, 0.9); /* Match background */
+        background-color: rgba(40, 40, 40, 0.9);
         color: #e0e0e0;
         padding: 15px; /* Match padding */
         border-radius: 16px 16px 0 0; /* Top-Left, Top-Right, Bottom-Right(0), Bottom-Left(0) */
@@ -367,10 +409,9 @@ body {
         opacity: 1;
         transition: none;
         pointer-events: auto;
-        backdrop-filter: blur(5px); /* Match blur */
+        backdrop-filter: blur(5px);
         -webkit-backdrop-filter: blur(5px);
         border: none; /* Remove side borders */
-        /* border-top: 1px solid rgba(255, 255, 255, 0.1); Optional top border */
         /* --- Flex Properties --- */
         flex-shrink: 0;
         box-sizing: border-box; /* Ensure padding included */
@@ -389,9 +430,9 @@ body {
     }
     #info-panel .info-flag-column {
          /* Float flag or use different layout */
-         float: right; /* Example: float right */
+         float: left; /* Changed from right to left */
          width: 60px; /* Adjust size */
-         margin: 0 0 5px 10px; /* Top, Right, Bottom, Left */
+         margin: 0 10px 5px 0; /* Changed margin: Top, Right, Bottom, Left */
     }
     #info-panel .info-flag-column img {
          width: 100%;
@@ -410,6 +451,7 @@ body {
          min-width: auto;
          width: auto;
          /* Text flows around floated flag */
+         overflow: hidden; /* Add this to contain the text flow properly */
     }
 
     #info-panel h2 { /* Title (was panel-country-name) */
@@ -487,7 +529,6 @@ body {
          font-size: 0.9em;
          border-radius: 14px;
      }
-
 
     /* ... (Map Container, Info Panel styles) ... */
 }
