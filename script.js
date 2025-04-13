@@ -93,6 +93,15 @@ const DISTANCE_LINE_OFFSET = 0.0015; // <<< ADDED: Specific small offset for the
 const AIRPLANE_SPEED = 4.0;         // <<< ADDED: World units per second
 const MIN_ANIMATION_DURATION = 750;   // <<< ADDED: Minimum duration in ms
 const MAX_ANIMATION_DURATION = 5000;  // <<< ADDED: Maximum duration in ms
+const TARGET_RING_COUNT = 5;
+const PIN_MARKER_OFFSET = 0.005;
+const CLOUD_ALTITUDE = 0.05;                   // <<< ADDED (Used in cloud geometry) {{ insert }}
+const CLOUD_ROTATION_SPEED = 0.01;        // <<< RESTORED Constant Y Speed {{ insert }}
+const CLOUD_X_OSCILLATION_AMPLITUDE = 0.03; // <<< ADDED: Max X rotation (radians) {{ insert }}
+const CLOUD_X_OSCILLATION_FREQUENCY = 0.4; // <<< ADDED: Speed of X oscillation {{ insert }}
+// const CLOUD_Y_OSCILLATION_AMPLITUDE = 0.08; // <<< REMOVED Y Amplitude {{ delete }}
+// const CLOUD_Y_OSCILLATION_FREQUENCY = 1;    // <<< REMOVED Y Frequency {{ delete }}
+const CLOUD_TEXTURE_PATH = 'assets/8k_earth_clouds.jpg'; // <<< ADDED DEFINITION {{ insert }}
 
 // --- PIN CONSTANTS (Ensure these are here and defined) ---
 const PIN_COLOR_DEFAULT = new THREE.Color(0xff0000);
@@ -269,10 +278,10 @@ function initMap() {
     console.log("Creating cloud layer...");
     try {
         const cloudTexture = new THREE.TextureLoader().load(
-            CLOUD_TEXTURE_PATH,
+            CLOUD_TEXTURE_PATH, // <<< PROBLEM: CLOUD_TEXTURE_PATH is not defined anywhere!
              () => { console.log("Cloud texture loaded successfully."); },
              undefined,
-             (err) => { console.error("Error loading cloud texture:", err); }
+             (err) => { console.error("Error loading cloud texture:", err); } // This error likely fired
         );
 
         const cloudGeometry = new THREE.SphereGeometry(EARTH_RADIUS + CLOUD_ALTITUDE, 64, 64);
@@ -293,7 +302,7 @@ function initMap() {
         scene.add(cloudMesh);
         console.log(`Cloud layer added. Initial visibility: ${cloudMesh.visible}`);
     } catch (error) {
-        console.error("Failed to create cloud layer:", error);
+        console.error("Failed to create cloud layer:", error); // This might not catch the texture load error
     }
     // --- End Cloud Layer ---
 
@@ -352,9 +361,14 @@ function calculateCameraDistanceForRadius(targetRadius, cameraFovRadians) {
 function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
+    const elapsedTime = clock.getElapsedTime(); // Still needed for X oscillation
 
-    if (cloudMesh) {
-        cloudMesh.rotation.y += CLOUD_ROTATION_SPEED;
+    if (cloudMesh) { // Ensure cloudMesh exists before rotating
+        // X-axis rotation oscillates smoothly
+        cloudMesh.rotation.x = Math.sin(elapsedTime * CLOUD_X_OSCILLATION_FREQUENCY) * CLOUD_X_OSCILLATION_AMPLITUDE;
+
+        // Y-axis rotation is back to constant increment
+        cloudMesh.rotation.y += CLOUD_ROTATION_SPEED * deltaTime; // <<< REVERTED to constant speed increment {{ modify }}
     }
 
     // --- Camera Logic ---
@@ -1631,7 +1645,6 @@ function updateSlipstream(deltaTime) {
 }
 
 const TARGET_RING_MAX_RADIUS = EARTH_RADIUS * 0.15;
-const PIN_MARKER_OFFSET = 0.005; // <<< ADDED: Small offset to prevent clipping 
 
 function createAndStartAirplaneAnimation(startCoords, endCoords) {
     // Calculate curve points (start, end, control points)
