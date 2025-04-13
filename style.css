@@ -426,21 +426,20 @@ body {
     /* Adjust Content Inside Bottom Panel */
     /* Remove wrapper and columns if layout is simpler */
     #info-panel .info-content-wrapper {
-         display: block; /* Revert from flex */
-         padding: 0; /* Remove wrapper padding */
-         gap: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
     }
     #info-panel .info-flag-column {
-         /* Float flag or use different layout */
-         float: left; /* Changed from right to left */
-         width: 60px; /* Adjust size */
-         margin: 0 10px 5px 0; /* Changed margin: Top, Right, Bottom, Left */
+        flex: 0 0 auto;
+        width: 120px;
+        margin-right: 15px;
     }
     #info-panel .info-flag-column img {
-         width: 100%;
-         height: auto;
-         border-radius: 4px;
-         border: 1px solid rgba(255, 255, 255, 0.1);
+        width: 100%;
+        height: auto;
+        display: block;
+        vertical-align: middle;
     }
     #info-panel .info-flag-column .no-flag {
          font-size: 0.7em;
@@ -449,11 +448,8 @@ body {
     }
 
     #info-panel .info-text-column {
-         /* No longer needs flex properties */
-         min-width: auto;
-         width: auto;
-         /* Text flows around floated flag */
-         overflow: hidden; /* Add this to contain the text flow properly */
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     #info-panel h2 { /* Title (was panel-country-name) */

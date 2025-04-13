@@ -1,3 +1,5 @@
+const EARTH_RADIUS = 5;
+
 // --- DOM Elements ---
 const countryNameElement = document.getElementById('country-name');
 const scoreElement = document.getElementById('score');
@@ -28,6 +30,8 @@ let targetRingClock = new THREE.Clock(); // <-- Clock for animation timing
 let cloudMesh = null; // <-- Add variable for clouds
 let currentDistanceLine = null;
 let highlightedBoundaryLines = []; // <-- **** ENSURE THIS LINE EXISTS AND IS UNCOMMENTED ****
+let selectedLocation = null; // { lat, lon }
+let targetCountryCenterVector = new THREE.Vector3(); // <<< ADDED: Store calculated center of target country
 
 // --- Three.js Variables ---
 let scene, camera, renderer, globe, controls, raycaster, mouse;
@@ -43,13 +47,29 @@ let particleData = []; // Array to hold individual particle info (age, position)
 const MAX_PARTICLES = 500; // Max number of particles in the system
 const PARTICLE_LIFETIME = 1.0; // How long particles last in seconds
 const PARTICLES_PER_FRAME = 3; // How many particles to emit each frame plane moves
-const PARTICLE_TURBULENCE = 0.05; // How much random movement per second
-const PARTICLE_DAMPING = 0.98; // Slows particles down (1 = no damping)
-const PARTICLE_INITIAL_SPREAD = 0.1; // How much initial velocity spread
-const clock = new THREE.Clock(); // <<< MOVED DECLARATION HERE
+const clock = new THREE.Clock();
+
+// --- Camera Animation State ---
+let isCameraFollowing = false;
+let isCameraPullingBack = false;
+let cameraPullBackStartTime = 0;
+const CAMERA_PULL_BACK_DURATION = 1500;
+const CAMERA_FOLLOW_DISTANCE = 2.5;
+const CAMERA_FOLLOW_HEIGHT = 0.3;
+const CAMERA_PULL_BACK_ALTITUDE = EARTH_RADIUS * 3.5;
+const CAMERA_DISTANCE_PADDING_FACTOR = 1.2; // Padding factor for framing (1.0 = exact fit)
+let initialCameraPosition = new THREE.Vector3();
+let initialControlsTarget = new THREE.Vector3();
+let targetCameraPosition = new THREE.Vector3();
+let pullBackTargetPosition = new THREE.Vector3(); // Final position for pull-back
+let pullBackLookAtTarget = new THREE.Vector3(); // Point camera looks at (pin position)
+let finalLookAtPoint = new THREE.Vector3(); // Will now hold the country center vector
+let pullBackStartPosition = new THREE.Vector3();
+let pullBackStartQuaternion = new THREE.Quaternion(); // Camera rotation when pull-back starts
+let pullBackTargetQuaternion = new THREE.Quaternion(); // Target rotation for pull-back
+const tempMatrix = new THREE.Matrix4(); // For lookAt calculation
 
 // --- Constants ---
-const EARTH_RADIUS = 5;
 const MARKER_COLOR = 0xff0000; // Red
 const MARKER_SIZE = 0.1;
 const STAR_COUNT = 5000;
@@ -67,7 +87,7 @@ const PULSE_DURATION = 1.5; // Seconds for one pulse cycle (expand/fade)
 const TARGET_OFFSET = 0.06; // Keep offset from surface
 const DISTANCE_LINE_OFFSET = 0.0015; // <<< ADDED: Specific small offset for the distance line
 
-const LINE_ANIMATION_DURATION = 2000; // <<< INCREASED DURATION TO SLOW DOWN
+const LINE_ANIMATION_DURATION = 3500; // <<< INCREASED DURATION (was 2000)
 const CLOUD_TEXTURE_PATH = 'assets/4k_earth_clouds.jpg'; // <-- Point to your file
 const CLOUD_ALTITUDE = 0.05; // <-- How high clouds float above surface (adjust)
 const CLOUD_ROTATION_SPEED = 0.0002; // <-- Speed clouds rotate (adjust)
@@ -324,14 +344,64 @@ function onWindowResize() {
     renderer.setSize(mapContainer.clientWidth, mapContainer.clientHeight);
 }
 
+// --- Helper function to calculate required distance ---
+// (Define it AFTER constants but BEFORE it's used in animate)
+function calculateCameraDistanceForRadius(targetRadius, cameraFovRadians) {
+    const halfFov = cameraFovRadians / 2;
+    if (Math.tan(halfFov) < 0.0001) return targetRadius * 10;
+    const distance = targetRadius / Math.tan(halfFov);
+    return distance * CAMERA_DISTANCE_PADDING_FACTOR;
+}
+
 function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
-    controls.update();
 
     if (cloudMesh) {
         cloudMesh.rotation.y += CLOUD_ROTATION_SPEED;
     }
+
+    // --- Camera Logic ---
+    if (isCameraFollowing && activeAirplane) {
+        console.log("Camera Following: Entered follow block.");
+        const planePos = activeAirplane.position;
+        const planeDir = activeAirplane.getWorldDirection(new THREE.Vector3());
+        const surfaceNormal = planePos.clone().normalize();
+        targetCameraPosition.copy(planePos)
+            .addScaledVector(planeDir, -CAMERA_FOLLOW_DISTANCE)
+            .addScaledVector(surfaceNormal, CAMERA_FOLLOW_HEIGHT);
+        camera.position.lerp(targetCameraPosition, 0.08);
+        camera.lookAt(activeAirplane.position);
+    } else if (isCameraPullingBack) {
+        console.log("Camera Pull-Back: Entered pull-back block.");
+
+        const pullBackElapsed = performance.now() - cameraPullBackStartTime;
+        let pullBackProgress = Math.min(pullBackElapsed / CAMERA_PULL_BACK_DURATION, 1.0);
+        const easedProgress = 0.5 - 0.5 * Math.cos(pullBackProgress * Math.PI);
+        console.log(`  Pull-back Progress: ${pullBackProgress.toFixed(3)}, Eased: ${easedProgress.toFixed(3)}`);
+
+        // Interpolate position
+        const preLerpPos = camera.position.clone();
+        camera.position.copy(pullBackStartPosition).lerp(pullBackTargetPosition, easedProgress);
+        console.log(`  Cam Pos Lerp: (${preLerpPos.x.toFixed(2)}, ${preLerpPos.y.toFixed(2)}, ${preLerpPos.z.toFixed(2)}) -> (${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)})`);
+
+        // Interpolate rotation towards the target quat (which looks at finalLookAtPoint)
+        const preSlerpQuat = camera.quaternion.clone();
+        camera.quaternion.slerpQuaternions(pullBackStartQuaternion, pullBackTargetQuaternion, easedProgress);
+        console.log(`  Cam Quat Slerp: Updated (Values not easily readable, check if changing)`);
+
+        if (pullBackProgress >= 1.0) {
+            console.log("Camera pull-back animation logic finished.");
+            isCameraPullingBack = false;
+            controls.target.copy(finalLookAtPoint);
+            console.log(`Final controls target set to country center (finalLookAtPoint): (${finalLookAtPoint.x.toFixed(2)}, ${finalLookAtPoint.y.toFixed(2)}, ${finalLookAtPoint.z.toFixed(2)})`);
+            controls.enabled = true;
+            controls.update();
+        }
+    } else if (controls.enabled) {
+        controls.update();
+    }
+     // --- End Camera Logic ---
 
     if (isLineAnimating) {
         const elapsedTime = performance.now() - lineAnimationStartTime;
@@ -349,41 +419,67 @@ function animate() {
             const airplanePosition = currentCurvePoint.clone().addScaledVector(surfaceNormal, AIRPLANE_OFFSET_ABOVE_LINE);
             activeAirplane.position.copy(airplanePosition);
 
-            emitSlipstreamParticle(airplanePosition); // Emit particles based on current position
+            emitSlipstreamParticle(airplanePosition);
 
-            // Orientation
             const tangent = currentLineCurve.getTangentAt(progress).normalize();
             const lookAtPoint = airplanePosition.clone().add(tangent);
             activeAirplane.lookAt(lookAtPoint);
 
-            // --- Dynamic Scaling Logic ---
             let scaleProgressRatio = 0;
-            const peakTime = 0.5; // Reaches full size at 50% progress
-
+            const peakTime = 0.5;
             if (progress < peakTime) {
-                // Scaling up phase (0% -> 50% progress)
-                scaleProgressRatio = progress / peakTime; // Goes from 0 to 1
+                scaleProgressRatio = progress / peakTime;
             } else {
-                // Scaling down phase (50% -> 100% progress)
-                scaleProgressRatio = (1.0 - progress) / (1.0 - peakTime); // Goes from 1 to 0
+                scaleProgressRatio = (1.0 - progress) / (1.0 - peakTime);
             }
-
-            // Apply an ease-in-out function for smoother transition
             const easedScaleProgress = 0.5 - 0.5 * Math.cos(scaleProgressRatio * Math.PI);
-
-            // Calculate the actual scale: start from min, go up to max, then back to min
             const minScale = AIRPLANE_SCALE * AIRPLANE_MIN_SCALE_FACTOR;
             const maxScale = AIRPLANE_SCALE;
             const currentScale = minScale + (maxScale - minScale) * easedScaleProgress;
-
             activeAirplane.scale.set(currentScale, currentScale, currentScale);
-            // --- End Dynamic Scaling Logic ---
-
         }
 
         if (progress >= 1.0) {
+            console.log("Line/Plane animation progress reached 1.0.");
             isLineAnimating = false;
-            removeActiveAirplane(); // Plane will be very small already
+            removeActiveAirplane();
+
+            console.log(`Checking transition condition: isCameraFollowing = ${isCameraFollowing}`);
+
+            // --- Transition from Follow to Pull-Back ---
+            if (isCameraFollowing) {
+                console.log("Transitioning to camera pull-back.");
+                isCameraFollowing = false;
+
+                pullBackStartPosition.copy(camera.position);
+                pullBackStartQuaternion.copy(camera.quaternion);
+                finalLookAtPoint.copy(targetCountryCenterVector);
+                console.log(`Final look-at point set to country center: (${finalLookAtPoint.x.toFixed(2)}, ${finalLookAtPoint.y.toFixed(2)}, ${finalLookAtPoint.z.toFixed(2)})`);
+
+                // Calculate final pull-back position based on FOV and Ring Size
+                const fovRadians = THREE.MathUtils.degToRad(camera.fov);
+                const requiredDistance = calculateCameraDistanceForRadius(TARGET_RING_MAX_RADIUS, fovRadians);
+                pullBackTargetPosition.copy(finalLookAtPoint).addScaledVector(targetCountryCenterVector, requiredDistance);
+
+                // Calculate final rotation (looking at the country center from the final position)
+                tempMatrix.lookAt(pullBackTargetPosition, finalLookAtPoint, camera.up);
+                pullBackTargetQuaternion.setFromRotationMatrix(tempMatrix);
+                console.log(`Pull-back target quaternion calculated to look at country center.`);
+
+                // Start pull-back animation
+                isCameraPullingBack = true;
+                cameraPullBackStartTime = performance.now();
+                console.log(`Camera Pull-back START: isCameraPullingBack=${isCameraPullingBack}`);
+
+            } else {
+                console.log("Animation finished, but camera was not in following state. Enabling controls.");
+                if (!isCameraPullingBack) {
+                    controls.enabled = true;
+                    finalLookAtPoint.copy(targetCountryCenterVector);
+                    controls.target.copy(finalLookAtPoint);
+                }
+            }
+
             createTargetRings();
             showCountryInfoPanel(currentCountry);
         }
@@ -698,8 +794,25 @@ async function loadCountryBoundary(country) {
 
 async function startNewRound() {
     console.log("Starting new round...");
-    nextButton.style.display = 'none';
+    console.log(`Start of Round - Initial Cam Pos: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}`);
+    console.log(`Start of Round - Initial Controls Target: ${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)}`);
+
     isLineAnimating = false;
+    isCameraFollowing = false;
+    isCameraPullingBack = false;
+
+    // Ensure controls are enabled
+    if (!controls.enabled) {
+        console.log("Controls were disabled, re-enabling in startNewRound.");
+        controls.enabled = true;
+    }
+
+    // <<< --- RESET CONTROLS TARGET --- >>>
+    controls.target.set(0, 0, 0); // Reset pivot point to center of the globe
+    controls.update(); // Update controls state immediately after resetting target
+    console.log(`Controls target reset to origin (0,0,0) for new guess.`);
+    // <<< --- END RESET --- >>>
+
     hideCountryInfoPanel();
     isGuessLocked = false;
     currentLineCurve = null;
@@ -716,18 +829,13 @@ async function startNewRound() {
         currentDistanceLine = null;
     }
 
-    // --- Reset Particle State ---
+    // --- Reset Particle Ages ---
     if (particleData) {
-        particleData.forEach(p => {
-             p.age = PARTICLE_LIFETIME; // Make all particles old
-             p.velocity.set(0, 0, 0); // Reset velocity
-        });
-        if (slipstreamParticles && slipstreamParticles.visible) {
-             slipstreamParticles.visible = false; // Hide the system
+        particleData.forEach(p => p.age = PARTICLE_LIFETIME);
+        if (slipstreamGeometry && slipstreamGeometry.attributes.position) {
+             slipstreamGeometry.attributes.position.needsUpdate = true;
+             slipstreamGeometry.attributes.color.needsUpdate = true;
         }
-         if (slipstreamGeometry && slipstreamGeometry.attributes.position) {
-             slipstreamGeometry.attributes.position.needsUpdate = true; // Force update to hide them visually if needed
-         }
     }
 
     // --- Use random selection again ---
@@ -756,6 +864,7 @@ async function startNewRound() {
     }
 
     console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}.`);
+    console.log(`End of startNewRound setup - Controls Target: ${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)}`);
 }
 
 function handleMapClick(event) {
@@ -809,7 +918,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     return Math.round(R * c);
 }
 
-function handleGuessConfirm() {
+async function handleGuessConfirm() {
     if (!playerGuess || !currentCountry || !pinSprite) {
          console.warn("Cannot confirm guess. Pin not placed or country not loaded.");
          return;
@@ -875,6 +984,24 @@ function handleGuessConfirm() {
     console.log(`Guessed: ${playerGuess.lat.toFixed(2)}, ${playerGuess.lon.toFixed(2)}`);
     console.log(`Actual (Center): ${currentCountry.lat.toFixed(2)}, ${currentCountry.lon.toFixed(2)}`);
     console.log(`Distance: ${distance} km, Score: ${roundScore}`);
+
+    // --- Store Country Center Vector ---
+    targetCountryCenterVector = getPointFromLatLon(currentCountry.lat, currentCountry.lon);
+    console.log(`Stored target country center vector: (${targetCountryCenterVector.x.toFixed(2)}, ${targetCountryCenterVector.y.toFixed(2)}, ${targetCountryCenterVector.z.toFixed(2)})`);
+
+    // --- Start Camera Follow Sequence ---
+    if (pinSprite) {
+        console.log("Starting camera follow sequence.");
+        initialCameraPosition.copy(camera.position);
+        initialControlsTarget.copy(controls.target);
+        controls.enabled = false;
+        isCameraFollowing = true;
+        isCameraPullingBack = false;
+        pullBackLookAtTarget.copy(pinSprite.position);
+    } else {
+        console.error("Pin marker not available for camera sequence.");
+    }
+    // --- End Camera Follow Sequence ---
 
     // --- Draw distance line AND Prepare Curve for Airplane ---
     const startVec = pinSprite.position.clone().normalize();
@@ -1423,23 +1550,23 @@ function initSlipstreamParticles() {
         colors[i * 3 + 2] = 1;
         particleData.push({
             position: new THREE.Vector3(0, 0, 0),
-            velocity: new THREE.Vector3(0, 0, 0), // <<< ADD VELOCITY
-            age: PARTICLE_LIFETIME
+            age: PARTICLE_LIFETIME // Start as "dead"
         });
     }
 
     slipstreamGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    slipstreamGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // <<< REMOVED
+    slipstreamGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // Still need color attribute if vertexColors is true
 
     // Create material
     particleMaterial = new THREE.PointsMaterial({
-        size: 0.02,
-        vertexColors: false, // <<< SET TO FALSE - Color is constant white now
-        color: 0xffffff,   // <<< SET BASE COLOR HERE
+        size: 0.02, // <<< MADE SMALLER
+        vertexColors: true, // Set to false if we don't need per-particle color variation
         transparent: true,
-        opacity: 0.6,
+        opacity: 0.6, // <<< SET TO 60%
         depthWrite: false
     });
+    // If vertexColors is set to false, you could remove the 'color' attribute setup above
+    // and the color update loop in updateSlipstream. But keeping it is flexible.
 
     slipstreamParticles = new THREE.Points(slipstreamGeometry, particleMaterial);
     slipstreamParticles.visible = false;
@@ -1452,22 +1579,12 @@ let nextParticleIndex = 0;
 function emitSlipstreamParticle(originPosition) {
     if (!slipstreamParticles || !activeAirplane) return;
 
-    const planeDirection = activeAirplane.getWorldDirection(new THREE.Vector3());
-
     for (let i = 0; i < PARTICLES_PER_FRAME; i++) {
         const pIndex = nextParticleIndex % MAX_PARTICLES;
         const p = particleData[pIndex];
 
-        // Start slightly behind the plane
-        const backwardOffset = planeDirection.clone().multiplyScalar(-0.1); // Adjust offset if needed
+        const backwardOffset = activeAirplane.getWorldDirection(new THREE.Vector3()).multiplyScalar(-0.1);
         p.position.copy(originPosition).add(backwardOffset);
-
-        // Initial velocity slightly randomized, generally backwards/outwards
-        p.velocity.copy(planeDirection).multiplyScalar(-0.2); // Base velocity moving away from plane direction
-        p.velocity.x += (Math.random() - 0.5) * PARTICLE_INITIAL_SPREAD; // Add random spread
-        p.velocity.y += (Math.random() - 0.5) * PARTICLE_INITIAL_SPREAD;
-        p.velocity.z += (Math.random() - 0.5) * PARTICLE_INITIAL_SPREAD;
-
         p.age = 0; // Reset age
 
         nextParticleIndex++;
@@ -1480,28 +1597,13 @@ function updateSlipstream(deltaTime) {
     if (!slipstreamParticles || !slipstreamGeometry) return;
 
     const positions = slipstreamGeometry.attributes.position.array;
+    const colors = slipstreamGeometry.attributes.color.array; // Keep color attribute if vertexColors: true
     let needsPosUpdate = false;
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
         const p = particleData[i];
         if (p.age < PARTICLE_LIFETIME) {
-            p.age += deltaTime;
-
-            // --- Apply Turbulence & Damping ---
-            // Add random turbulence vector
-            const turbulence = new THREE.Vector3(
-                (Math.random() - 0.5),
-                (Math.random() - 0.5),
-                (Math.random() - 0.5)
-            ).multiplyScalar(PARTICLE_TURBULENCE * deltaTime); // Scale turbulence by delta time
-            p.velocity.add(turbulence);
-
-            // Apply damping
-            p.velocity.multiplyScalar(Math.pow(PARTICLE_DAMPING, deltaTime*60)); // Apply damping based on time
-
-            // Update position based on velocity
-            p.position.addScaledVector(p.velocity, deltaTime);
-            // --- End Turbulence & Damping ---
+            p.age += deltaTime; // Increment age
 
             // Update geometry attributes
             positions[i * 3] = p.position.x;
@@ -1515,9 +1617,11 @@ function updateSlipstream(deltaTime) {
              positions[i * 3 + 1] = 10000;
              positions[i * 3 + 2] = 10000;
              needsPosUpdate = true;
-             p.velocity.set(0,0,0); // Reset velocity for hidden particles
         }
     }
 
     if (needsPosUpdate) slipstreamGeometry.attributes.position.needsUpdate = true;
-} 
+}
+
+const TARGET_RING_MAX_RADIUS = EARTH_RADIUS * 0.15;
+const PIN_MARKER_OFFSET = 0.005; // <<< ADDED: Small offset to prevent clipping 
