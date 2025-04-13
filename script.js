@@ -1,4 +1,7 @@
 const EARTH_RADIUS = 5;
+const AIRPLANE_SCALE = 0.04;
+const AIRPLANE_MIN_SCALE_FACTOR = 0.01;
+const AIRPLANE_OFFSET_ABOVE_LINE = 0.05;
 
 // --- DOM Elements ---
 const countryNameElement = document.getElementById('country-name');
@@ -32,6 +35,7 @@ let currentDistanceLine = null;
 let highlightedBoundaryLines = []; // <-- **** ENSURE THIS LINE EXISTS AND IS UNCOMMENTED ****
 let selectedLocation = null; // { lat, lon }
 let targetCountryCenterVector = new THREE.Vector3(); // <<< ADDED: Store calculated center of target country
+let currentAnimationDuration = 2000; // <<< ADDED: Variable to hold current duration, default value
 
 // --- Three.js Variables ---
 let scene, camera, renderer, globe, controls, raycaster, mouse;
@@ -86,17 +90,9 @@ const TARGET_RING_THICKNESS = 0.01; // How thick the ring geometry is
 const PULSE_DURATION = 1.5; // Seconds for one pulse cycle (expand/fade)
 const TARGET_OFFSET = 0.06; // Keep offset from surface
 const DISTANCE_LINE_OFFSET = 0.0015; // <<< ADDED: Specific small offset for the distance line
-
-const LINE_ANIMATION_DURATION = 3500; // <<< INCREASED DURATION (was 2000)
-const CLOUD_TEXTURE_PATH = 'assets/4k_earth_clouds.jpg'; // <-- Point to your file
-const CLOUD_ALTITUDE = 0.05; // <-- How high clouds float above surface (adjust)
-const CLOUD_ROTATION_SPEED = 0.0002; // <-- Speed clouds rotate (adjust)
-const SUN_DISTANCE = 1000; // How far away the sun light source is
-const LENSFLARE_TEXTURE0_PATH = 'assets/lensflare0.png'; // Path to main flare texture
-const LENSFLARE_TEXTURE3_PATH = 'assets/lensflare3.png'; // Path to ghost flare texture
-const AIRPLANE_SCALE = 0.04; // Target full size
-const AIRPLANE_MIN_SCALE_FACTOR = 0.01; // Start/end size relative to AIRPLANE_SCALE
-const AIRPLANE_OFFSET_ABOVE_LINE = 0.05;
+const AIRPLANE_SPEED = 4.0;         // <<< ADDED: World units per second
+const MIN_ANIMATION_DURATION = 750;   // <<< ADDED: Minimum duration in ms
+const MAX_ANIMATION_DURATION = 5000;  // <<< ADDED: Maximum duration in ms
 
 // --- PIN CONSTANTS (Ensure these are here and defined) ---
 const PIN_COLOR_DEFAULT = new THREE.Color(0xff0000);
@@ -405,7 +401,7 @@ function animate() {
 
     if (isLineAnimating) {
         const elapsedTime = performance.now() - lineAnimationStartTime;
-        const progress = Math.min(elapsedTime / LINE_ANIMATION_DURATION, 1.0);
+        const progress = Math.min(elapsedTime / currentAnimationDuration, 1.0);
 
         if (currentDistanceLine) {
             const pointsToDraw = Math.ceil(lineTotalPoints * progress);
@@ -415,15 +411,29 @@ function animate() {
 
         if (activeAirplane && currentLineCurve) {
             const currentCurvePoint = currentLineCurve.getPointAt(progress);
-            const surfaceNormal = currentCurvePoint.clone().normalize();
-            const airplanePosition = currentCurvePoint.clone().addScaledVector(surfaceNormal, AIRPLANE_OFFSET_ABOVE_LINE);
+            // Calculate position slightly above the curve point using the *curve point's* normal for offset
+            const curveSurfaceNormal = currentCurvePoint.clone().normalize();
+            const airplanePosition = currentCurvePoint.clone().addScaledVector(curveSurfaceNormal, AIRPLANE_OFFSET_ABOVE_LINE);
             activeAirplane.position.copy(airplanePosition);
 
-            emitSlipstreamParticle(airplanePosition);
+            emitSlipstreamParticle(airplanePosition); // Emit particles
 
+            // --- Correct Orientation Logic ---
+            // 1. Calculate the tangent (direction of travel)
             const tangent = currentLineCurve.getTangentAt(progress).normalize();
+
+            // 2. Calculate the surface normal at the airplane's *actual* position
+            const surfaceNormal = airplanePosition.clone().normalize();
+
+            // 3. Set the airplane's 'up' vector to the surface normal
+            activeAirplane.up.copy(surfaceNormal);
+
+            // 4. Calculate the point to look at (along the tangent)
             const lookAtPoint = airplanePosition.clone().add(tangent);
+
+            // 5. Call lookAt - it will use the .up vector we just set
             activeAirplane.lookAt(lookAtPoint);
+            // --- End Correct Orientation Logic ---
 
             let scaleProgressRatio = 0;
             const peakTime = 0.5;
@@ -1045,7 +1055,7 @@ async function handleGuessConfirm() {
         activeAirplane = airplaneModel.clone(); // Clone the loaded model
 
         // Get initial position slightly ABOVE the line start
-        const initialPosition = currentLineCurve.getPointAt(0).clone();
+        const initialPosition = currentLineCurve.getPointAt(0);
         const surfaceNormal = initialPosition.clone().normalize();
         initialPosition.addScaledVector(surfaceNormal, AIRPLANE_OFFSET_ABOVE_LINE);
         activeAirplane.position.copy(initialPosition);
@@ -1491,27 +1501,24 @@ async function loadAirplaneModel() {
         loader.load(
             'assets/airplane.glb',
             (gltf) => {
+                console.log("Airplane model loaded successfully.");
                 airplaneModel = gltf.scene;
-                // Pre-scale the model once loaded
-                airplaneModel.scale.set(AIRPLANE_SCALE, AIRPLANE_SCALE, AIRPLANE_SCALE);
-                // Optional: traverse and set castShadow=true for parts if desired
-                airplaneModel.traverse((node) => {
+                // Apply initial settings (optional, can be done on instantiation)
+                airplaneModel.traverse(function (node) {
                     if (node.isMesh) {
-                         node.castShadow = true;
-                         console.log("Airplane Mesh Material:", node.material); // Log material info
-                         // Optional: If model looks dark, you might need to adjust material
-                         // node.material.metalness = 0.1;
-                         // node.material.roughness = 0.8;
+                        node.castShadow = true;
+                        // Optional: Adjust material properties if needed
+                        // node.material.metalness = 0.5;
                     }
                 });
-                console.log("Airplane model loaded and processed.");
-                resolve(); // Resolve the promise when loading is complete
+                // Initial scale and rotation might be better set when cloning/adding to scene
+                // airplaneModel.scale.set(AIRPLANE_SCALE, AIRPLANE_SCALE, AIRPLANE_SCALE); // Uses constant
+                resolve();
             },
             undefined, // Progress callback (optional)
-            (error) => {
-                console.error('Error loading airplane model:', error);
-                airplaneModel = null; // Ensure it's null on error
-                reject(error); // Reject the promise on error
+            function (error) {
+                console.error('An error happened loading the airplane model:', error);
+                reject(error);
             }
         );
     });
@@ -1625,3 +1632,54 @@ function updateSlipstream(deltaTime) {
 
 const TARGET_RING_MAX_RADIUS = EARTH_RADIUS * 0.15;
 const PIN_MARKER_OFFSET = 0.005; // <<< ADDED: Small offset to prevent clipping 
+
+function createAndStartAirplaneAnimation(startCoords, endCoords) {
+    // Calculate curve points (start, end, control points)
+    const startVec = latLonToVector3(startCoords.lat, startCoords.lon, EARTH_RADIUS);
+    const endVec = latLonToVector3(endCoords.lat, endCoords.lon, EARTH_RADIUS);
+    const distancePoints = [startVec];
+    const midPoint = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
+    const midLength = midPoint.length();
+    midPoint.normalize().multiplyScalar(midLength + startVec.distanceTo(endVec) * 0.4); // Adjust curve height factor
+    const controlPoint1 = startVec.clone().lerp(midPoint, 0.5).normalize().multiplyScalar(EARTH_RADIUS + 0.2);
+    const controlPoint2 = endVec.clone().lerp(midPoint, 0.5).normalize().multiplyScalar(EARTH_RADIUS + 0.2);
+
+    // Create the curve
+    currentLineCurve = new THREE.CubicBezierCurve3(startVec, controlPoint1, controlPoint2, endVec);
+    if (!currentLineCurve) {
+        console.error("Failed to create line curve.");
+        return;
+    }
+
+    // --- Calculate Dynamic Duration ---
+    const curveLength = currentLineCurve.getLength();
+    let duration = (curveLength / AIRPLANE_SPEED) * 1000; // Duration in ms
+    currentAnimationDuration = Math.max(MIN_ANIMATION_DURATION, Math.min(duration, MAX_ANIMATION_DURATION)); // Clamp duration
+    console.log(`Curve Length: ${curveLength.toFixed(2)}, Calculated Duration: ${duration.toFixed(0)}ms, Clamped Duration: ${currentAnimationDuration}ms`);
+    // --- End Calculate Dynamic Duration ---
+
+
+    if (!airplaneModel) {
+        console.error("Airplane model not loaded yet!");
+        return;
+    }
+    removeActiveAirplane(); // Remove any existing airplane
+
+    activeAirplane = airplaneModel.clone();
+    // Set initial position and scale
+    const startPoint = currentLineCurve.getPointAt(0);
+    const startNormal = startPoint.clone().normalize();
+    activeAirplane.position.copy(startPoint.addScaledVector(startNormal, AIRPLANE_OFFSET_ABOVE_LINE));
+    activeAirplane.scale.set(AIRPLANE_SCALE * AIRPLANE_MIN_SCALE_FACTOR, AIRPLANE_SCALE * AIRPLANE_MIN_SCALE_FACTOR, AIRPLANE_SCALE * AIRPLANE_MIN_SCALE_FACTOR);
+    activeAirplane.visible = true;
+    scene.add(activeAirplane);
+
+    // Start animation timers
+    lineAnimationStartTime = performance.now();
+    isLineAnimating = true;
+
+    // Reset particle system
+    // ... (particle reset logic) ...
+
+    console.log("Airplane animation started.");
+} 
