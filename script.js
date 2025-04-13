@@ -33,9 +33,23 @@ let highlightedBoundaryLines = []; // <-- **** ENSURE THIS LINE EXISTS AND IS UN
 let scene, camera, renderer, globe, controls, raycaster, mouse;
 let sunLight = null; // <-- Declare DirectionalLight globally
 let ambientLight = null; // <-- Declare AmbientLight globally
+let airplaneModel = null; // To store the loaded airplane scene
+let activeAirplane = null; // The currently animating airplane instance
+let currentLineCurve = null; // To store the curve path for the line/plane
+let slipstreamParticles = null; // Points object for the slipstream
+let slipstreamGeometry = null; // Geometry for particles
+let particleMaterial = null; // Material for particles
+let particleData = []; // Array to hold individual particle info (age, position)
+const MAX_PARTICLES = 500; // Max number of particles in the system
+const PARTICLE_LIFETIME = 1.0; // How long particles last in seconds
+const PARTICLES_PER_FRAME = 3; // How many particles to emit each frame plane moves
+const PARTICLE_TURBULENCE = 0.05; // How much random movement per second
+const PARTICLE_DAMPING = 0.98; // Slows particles down (1 = no damping)
+const PARTICLE_INITIAL_SPREAD = 0.1; // How much initial velocity spread
+const clock = new THREE.Clock(); // <<< MOVED DECLARATION HERE
 
 // --- Constants ---
-const GLOBE_RADIUS = 5;
+const EARTH_RADIUS = 5;
 const MARKER_COLOR = 0xff0000; // Red
 const MARKER_SIZE = 0.1;
 const STAR_COUNT = 5000;
@@ -44,7 +58,7 @@ const PIN_SCALE_DEFAULT = 0.05;
 const PIN_SCALE_HOVER = 0.06;
 const PIN_SCALE_MOBILE = 0.08; // <-- New constant for mobile size
 const PIN_IMAGE_PATH = 'assets/pin.svg';
-const PIN_OFFSET = 0.02; // <<< CHANGED: Significantly reduce pin offset
+const PIN_OFFSET = 0.05; // <<< CHANGED: Significantly reduce pin offset
 const TARGET_RING_COLOR = 0x00ff00; // Green rings
 const NUM_TARGET_RINGS = 4;       // How many rings in the pulse effect
 const TARGET_RING_MAX_SCALE = 0.4; // Max size the rings expand to (adjust)
@@ -53,13 +67,16 @@ const PULSE_DURATION = 1.5; // Seconds for one pulse cycle (expand/fade)
 const TARGET_OFFSET = 0.06; // Keep offset from surface
 const DISTANCE_LINE_OFFSET = 0.0015; // <<< ADDED: Specific small offset for the distance line
 
-const LINE_ANIMATION_DURATION = 1000;
+const LINE_ANIMATION_DURATION = 2000; // <<< INCREASED DURATION TO SLOW DOWN
 const CLOUD_TEXTURE_PATH = 'assets/4k_earth_clouds.jpg'; // <-- Point to your file
 const CLOUD_ALTITUDE = 0.05; // <-- How high clouds float above surface (adjust)
 const CLOUD_ROTATION_SPEED = 0.0002; // <-- Speed clouds rotate (adjust)
 const SUN_DISTANCE = 1000; // How far away the sun light source is
 const LENSFLARE_TEXTURE0_PATH = 'assets/lensflare0.png'; // Path to main flare texture
 const LENSFLARE_TEXTURE3_PATH = 'assets/lensflare3.png'; // Path to ghost flare texture
+const AIRPLANE_SCALE = 0.04; // Target full size
+const AIRPLANE_MIN_SCALE_FACTOR = 0.01; // Start/end size relative to AIRPLANE_SCALE
+const AIRPLANE_OFFSET_ABOVE_LINE = 0.05;
 
 // --- PIN CONSTANTS (Ensure these are here and defined) ---
 const PIN_COLOR_DEFAULT = new THREE.Color(0xff0000);
@@ -212,7 +229,7 @@ function initMap() {
     }
 
     // Globe
-    const globeGeometry = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64);
+    const globeGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
     // --- Texture Loading ---
     // Loading the local texture file
     const textureLoader = new THREE.TextureLoader();
@@ -242,7 +259,7 @@ function initMap() {
              (err) => { console.error("Error loading cloud texture:", err); }
         );
 
-        const cloudGeometry = new THREE.SphereGeometry(GLOBE_RADIUS + CLOUD_ALTITUDE, 64, 64);
+        const cloudGeometry = new THREE.SphereGeometry(EARTH_RADIUS + CLOUD_ALTITUDE, 64, 64);
 
         const cloudMaterial = new THREE.MeshPhongMaterial({
             map: cloudTexture,
@@ -277,7 +294,7 @@ function initMap() {
     controls.panSpeed = 0.5;    // Keep pan speed reduced or adjust
 
     // --- Other Control Settings ---
-    controls.minDistance = GLOBE_RADIUS + 1; // Prevent zooming inside globe
+    controls.minDistance = EARTH_RADIUS + 1; // Prevent zooming inside globe
     controls.maxDistance = 50; // Adjust max zoom out if needed
 
     // The combination of lower rotateSpeed and damping should make
@@ -309,58 +326,89 @@ function onWindowResize() {
 
 function animate() {
     requestAnimationFrame(animate);
-    // --- IMPORTANT: Update Controls for Damping ---
-    controls.update(); // MUST be called each frame if enableDamping is true
-    // ---------------------------------------------
+    const deltaTime = clock.getDelta();
+    controls.update();
 
-    // --- Cloud Rotation ---
     if (cloudMesh) {
-        cloudMesh.rotation.y += CLOUD_ROTATION_SPEED; // Rotate cloud layer slowly
+        cloudMesh.rotation.y += CLOUD_ROTATION_SPEED;
     }
-    // --- End Cloud Rotation ---
 
-    // --- Line Animation Logic ---
-    if (isLineAnimating && currentDistanceLine) {
+    if (isLineAnimating) {
         const elapsedTime = performance.now() - lineAnimationStartTime;
         const progress = Math.min(elapsedTime / LINE_ANIMATION_DURATION, 1.0);
-        const pointsToDraw = Math.ceil(lineTotalPoints * progress);
-        const verticesToDraw = Math.max(0, pointsToDraw);
-        currentDistanceLine.geometry.setDrawRange(0, verticesToDraw);
+
+        if (currentDistanceLine) {
+            const pointsToDraw = Math.ceil(lineTotalPoints * progress);
+            const verticesToDraw = Math.max(0, pointsToDraw);
+            currentDistanceLine.geometry.setDrawRange(0, verticesToDraw);
+        }
+
+        if (activeAirplane && currentLineCurve) {
+            const currentCurvePoint = currentLineCurve.getPointAt(progress);
+            const surfaceNormal = currentCurvePoint.clone().normalize();
+            const airplanePosition = currentCurvePoint.clone().addScaledVector(surfaceNormal, AIRPLANE_OFFSET_ABOVE_LINE);
+            activeAirplane.position.copy(airplanePosition);
+
+            emitSlipstreamParticle(airplanePosition); // Emit particles based on current position
+
+            // Orientation
+            const tangent = currentLineCurve.getTangentAt(progress).normalize();
+            const lookAtPoint = airplanePosition.clone().add(tangent);
+            activeAirplane.lookAt(lookAtPoint);
+
+            // --- Dynamic Scaling Logic ---
+            let scaleProgressRatio = 0;
+            const peakTime = 0.5; // Reaches full size at 50% progress
+
+            if (progress < peakTime) {
+                // Scaling up phase (0% -> 50% progress)
+                scaleProgressRatio = progress / peakTime; // Goes from 0 to 1
+            } else {
+                // Scaling down phase (50% -> 100% progress)
+                scaleProgressRatio = (1.0 - progress) / (1.0 - peakTime); // Goes from 1 to 0
+            }
+
+            // Apply an ease-in-out function for smoother transition
+            const easedScaleProgress = 0.5 - 0.5 * Math.cos(scaleProgressRatio * Math.PI);
+
+            // Calculate the actual scale: start from min, go up to max, then back to min
+            const minScale = AIRPLANE_SCALE * AIRPLANE_MIN_SCALE_FACTOR;
+            const maxScale = AIRPLANE_SCALE;
+            const currentScale = minScale + (maxScale - minScale) * easedScaleProgress;
+
+            activeAirplane.scale.set(currentScale, currentScale, currentScale);
+            // --- End Dynamic Scaling Logic ---
+
+        }
 
         if (progress >= 1.0) {
             isLineAnimating = false;
+            removeActiveAirplane(); // Plane will be very small already
             createTargetRings();
             showCountryInfoPanel(currentCountry);
         }
     }
-    // --- End Line Animation Logic ---
 
-    // --- Target Rings Pulsating Animation ---
+    updateSlipstream(deltaTime);
+
     if (targetRings.length > 0) {
-        const elapsedTime = targetRingClock.getElapsedTime(); // Time since rings were created
+        const elapsedTime = targetRingClock.getElapsedTime();
 
         targetRings.forEach((ring, index) => {
-            // Calculate time offset for this specific ring to stagger the pulses
             const timeOffset = (index / NUM_TARGET_RINGS) * PULSE_DURATION;
-            // Calculate current time within this ring's pulse cycle
             const cycleTime = (elapsedTime + timeOffset) % PULSE_DURATION;
-            // Calculate progress within the cycle (0 to 1)
             const progress = cycleTime / PULSE_DURATION;
 
-            // Animate scale: Start small, grow to 1 (geometry defines max size)
             const scale = progress;
             ring.scale.set(scale, scale, scale);
 
-            // Animate opacity: Start opaque, fade out (e.g., using pow for easing)
-            const opacity = Math.pow(1.0 - progress, 2); // Fade out faster at the end
+            const opacity = Math.pow(1.0 - progress, 2);
             ring.material.opacity = opacity;
 
-             // Ensure rings become invisible when fully faded to avoid depth fighting
-             ring.visible = ring.material.opacity > 0.01;
+            ring.visible = ring.material.opacity > 0.01;
 
         });
     }
-    // --- End Target Rings Animation ---
 
     renderer.render(scene, camera);
 }
@@ -417,9 +465,9 @@ function getPointFromLatLon(lat, lon) {
     const phi = lat * (Math.PI / 180);
     const theta = (lon - 180) * (Math.PI / 180);
 
-    const x = -(GLOBE_RADIUS * Math.cos(phi) * Math.cos(theta));
-    const y = GLOBE_RADIUS * Math.sin(phi);
-    const z = GLOBE_RADIUS * Math.cos(phi) * Math.sin(theta);
+    const x = -(EARTH_RADIUS * Math.cos(phi) * Math.cos(theta));
+    const y = EARTH_RADIUS * Math.sin(phi);
+    const z = EARTH_RADIUS * Math.cos(phi) * Math.sin(theta);
 
     return new THREE.Vector3(x, y, z);
 }
@@ -492,7 +540,7 @@ function getPolygonPoints3D(polygonCoords, offset) {
         const lon = coord[0];
         const lat = coord[1];
         if (typeof lon === 'number' && typeof lat === 'number') {
-            points3D.push(getPointFromLatLon(lat, lon).normalize().multiplyScalar(GLOBE_RADIUS + offset));
+            points3D.push(getPointFromLatLon(lat, lon).normalize().multiplyScalar(EARTH_RADIUS + offset));
         } else {
             console.warn("Skipping invalid coordinate in polygon:", coord);
         }
@@ -654,16 +702,32 @@ async function startNewRound() {
     isLineAnimating = false;
     hideCountryInfoPanel();
     isGuessLocked = false;
+    currentLineCurve = null;
 
     // Remove previous visuals
     removePin();
     removeTargetRings();
     removeHighlightedBoundaries();
+    removeActiveAirplane();
     if (currentDistanceLine) {
         scene.remove(currentDistanceLine);
         if(currentDistanceLine.geometry) currentDistanceLine.geometry.dispose();
         if(currentDistanceLine.material) currentDistanceLine.material.dispose();
         currentDistanceLine = null;
+    }
+
+    // --- Reset Particle State ---
+    if (particleData) {
+        particleData.forEach(p => {
+             p.age = PARTICLE_LIFETIME; // Make all particles old
+             p.velocity.set(0, 0, 0); // Reset velocity
+        });
+        if (slipstreamParticles && slipstreamParticles.visible) {
+             slipstreamParticles.visible = false; // Hide the system
+        }
+         if (slipstreamGeometry && slipstreamGeometry.attributes.position) {
+             slipstreamGeometry.attributes.position.needsUpdate = true; // Force update to hide them visually if needed
+         }
     }
 
     // --- Use random selection again ---
@@ -723,7 +787,7 @@ function handleMapClick(event) {
         console.log("Map clicked at (3D):", intersectionPoint);
 
         // Calculate position slightly above the surface for the sprite
-        const pinPosition = intersectionPoint.clone().normalize().multiplyScalar(GLOBE_RADIUS + PIN_OFFSET); // Use PIN_OFFSET
+        const pinPosition = intersectionPoint.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET); // Use PIN_OFFSET
 
         // Use the new function to create/update the pin
         createOrUpdatePin(pinPosition);
@@ -745,12 +809,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     return Math.round(R * c);
 }
 
-function calculateScore(distance) {
-    const maxDistance = 20000; // Approx max distance on Earth
-    const score = Math.max(0, Math.round((1 - (distance / maxDistance)) * 1000));
-    return score;
-}
-
 function handleGuessConfirm() {
     if (!playerGuess || !currentCountry || !pinSprite) {
          console.warn("Cannot confirm guess. Pin not placed or country not loaded.");
@@ -759,85 +817,131 @@ function handleGuessConfirm() {
     guessButton.disabled = true;
     nextButton.style.display = 'none';
     isGuessLocked = true;
-
+    // countrySelectElement.disabled = true; // Keep commented if dropdown removed
     console.log("Confirming guess...");
     console.log("Current country geometry before scoring/highlighting:", currentCountry.geometry);
 
     let roundScore = 0;
-    let distance = null;
+    let distance = null; // Initialize distance
 
-    // Scoring Logic (now uses globally defined isPointInCountry)
+    // --- NEW SCORING LOGIC ---
     if (currentCountry.geometry) {
         const isInside = isPointInCountry(playerGuess, currentCountry.geometry);
         if (isInside) {
-             console.log("Guess is INSIDE country boundary!");
-             roundScore = 1000;
-             distance = 0;
-         } else {
-             console.log("Guess is OUTSIDE country boundary. Calculating score by distance.");
-             distance = calculateDistance(playerGuess.lat, playerGuess.lon, currentCountry.lat, currentCountry.lon);
-             roundScore = calculateScore(distance);
-         }
-    } else {
+            console.log("Guess is INSIDE country boundary!");
+            roundScore = 1000;
+            distance = 0; // Display 0 distance for perfect guess
+        } else {
+            console.log("Guess is OUTSIDE country boundary. Calculating score by distance.");
+            distance = calculateDistance(
+                playerGuess.lat, playerGuess.lon,
+                currentCountry.lat, currentCountry.lon // Use center point coords
+            );
+            // Apply the 1000km threshold scoring
+            if (distance <= 1000) {
+                roundScore = 1000 - distance;
+                console.log(`Distance (${distance}km) <= 1000km. Score: ${roundScore}`);
+            } else {
+                roundScore = 0; // Outside 1000km range
+                 console.log(`Distance (${distance}km) > 1000km. Score: 0`);
+            }
+        }
+    } else { // Fallback if boundary data failed to load
         console.warn("No boundary data for country, calculating score by distance only.");
-        distance = calculateDistance(playerGuess.lat, playerGuess.lon, currentCountry.lat, currentCountry.lon);
-        roundScore = calculateScore(distance);
+        distance = calculateDistance(
+            playerGuess.lat, playerGuess.lon,
+            currentCountry.lat, currentCountry.lon // Use center point coords
+        );
+        // Apply the 1000km threshold scoring (fallback)
+        if (distance <= 1000) {
+            roundScore = 1000 - distance;
+             console.log(`Fallback: Distance (${distance}km) <= 1000km. Score: ${roundScore}`);
+        } else {
+            roundScore = 0; // Outside 1000km range
+             console.log(`Fallback: Distance (${distance}km) > 1000km. Score: 0`);
+        }
     }
+    // Ensure score is not negative (shouldn't happen with this logic, but safe)
+    roundScore = Math.max(0, roundScore);
+    // --- END NEW SCORING LOGIC ---
 
+
+    // Update total score and UI
     score += roundScore;
     scoreElement.textContent = score;
-    distanceElement.textContent = distance !== null ? `${distance}` : 'Error';
+    distanceElement.textContent = distance !== null ? `${distance}` : 'Error'; // Display calculated distance or 0
+
+    // Log results
     console.log(`Guessed: ${playerGuess.lat.toFixed(2)}, ${playerGuess.lon.toFixed(2)}`);
     console.log(`Actual (Center): ${currentCountry.lat.toFixed(2)}, ${currentCountry.lon.toFixed(2)}`);
     console.log(`Distance: ${distance} km, Score: ${roundScore}`);
 
-    // --- Add the CURVED distance line ---
-    const startVec = pinSprite.position.clone().normalize(); // Guess position (normalized)
-    const endVec = getPointFromLatLon(currentCountry.lat, currentCountry.lon).normalize(); // Line to center
-
+    // --- Draw distance line AND Prepare Curve for Airplane ---
+    const startVec = pinSprite.position.clone().normalize();
+    const endVec = getPointFromLatLon(currentCountry.lat, currentCountry.lon).normalize();
     const points = [];
-    const numPoints = 30;
-    // const arcOffset = TARGET_OFFSET; // Use specific line offset instead
-    const arcOffset = DISTANCE_LINE_OFFSET; // <<< CHANGED: Use the new smaller offset
+    const numPoints = 50; // Increased points for smoother curve
+    const arcOffset = DISTANCE_LINE_OFFSET; // Use the constant for the VISIBLE line
 
     for (let i = 0; i <= numPoints; i++) {
         const t = i / numPoints;
-        const intermediateVec = new THREE.Vector3().lerpVectors(startVec, endVec, t);
-        intermediateVec.normalize();
-        intermediateVec.multiplyScalar(GLOBE_RADIUS + arcOffset); // Use the smaller offset
+        // Interpolate linearly in normalized space, then re-normalize and scale
+        const intermediateVec = new THREE.Vector3().lerpVectors(startVec, endVec, t).normalize();
+        // Add offset from the globe surface for the visible line
+        intermediateVec.multiplyScalar(EARTH_RADIUS + arcOffset);
         points.push(intermediateVec);
     }
 
+    // --- Create the smooth curve for animation path ---
+    currentLineCurve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.1); // Smoother curve
+
+    // --- Setup VISIBLE line geometry (using original 'points') ---
     const curveGeometry = new THREE.BufferGeometry().setFromPoints(points);
-    // --- Modify Line Material ---
     const curveMaterial = new THREE.LineBasicMaterial({
-        color: LINE_AND_TARGET_COLOR,
-        linewidth: 2, // Keep width reasonable
-        depthTest: true,        // <<< ADDED
-        depthWrite: false,       // <<< ADDED
-        transparent: true,      // Keep transparency
-        opacity: 0.9,           // Keep opacity
-
-        polygonOffset: true,     // <<< ADDED
-        polygonOffsetFactor: -0.5, // <<< ADDED: Slightly less offset than boundary?
-        polygonOffsetUnits: -0.5   // <<< ADDED: Adjust if needed
+        color: LINE_AND_TARGET_COLOR, linewidth: 2, depthTest: true, depthWrite: false,
+        transparent: true, opacity: 0.9, polygonOffset: true, polygonOffsetFactor: -0.5, polygonOffsetUnits: -0.5
     });
-    // ---------------------------
-
     if (currentDistanceLine) {
-        // Dispose previous geometry/material before removing
         if(currentDistanceLine.geometry) currentDistanceLine.geometry.dispose();
         if(currentDistanceLine.material) currentDistanceLine.material.dispose();
         scene.remove(currentDistanceLine);
     }
     currentDistanceLine = new THREE.Line(curveGeometry, curveMaterial);
-    currentDistanceLine.geometry.setDrawRange(0, 0);
+    currentDistanceLine.geometry.setDrawRange(0, 0); // Start invisible
     scene.add(currentDistanceLine);
-    lineTotalPoints = points.length;
+    lineTotalPoints = points.length; // Keep using original points length for line draw range
+
+    // --- Instantiate Airplane ---
+    removeActiveAirplane(); // Remove previous one if any
+    if (airplaneModel && currentLineCurve) {
+        console.log("Instantiating airplane...");
+        activeAirplane = airplaneModel.clone(); // Clone the loaded model
+
+        // Get initial position slightly ABOVE the line start
+        const initialPosition = currentLineCurve.getPointAt(0).clone();
+        const surfaceNormal = initialPosition.clone().normalize();
+        initialPosition.addScaledVector(surfaceNormal, AIRPLANE_OFFSET_ABOVE_LINE);
+        activeAirplane.position.copy(initialPosition);
+
+        // Initial orientation
+        const tangent = currentLineCurve.getTangentAt(0).normalize();
+        const lookAtPos = initialPosition.clone().add(tangent);
+        activeAirplane.lookAt(lookAtPos);
+        // You might need to add an extra rotation if the model isn't oriented correctly along its local Z axis
+        // activeAirplane.rotateX(Math.PI / 2); // <<< COMMENTED OUT corrective rotation
+
+        scene.add(activeAirplane);
+    } else if (!airplaneModel) {
+         console.warn("Cannot create airplane instance: Model not loaded yet.");
+    }
+     // --- END Instantiate Airplane ---
+
+    // Start Animation Timer
     lineAnimationStartTime = performance.now();
     isLineAnimating = true;
 
-    // Highlight Boundary
+
+    // Highlight Country Boundary
     if (currentCountry.geometry) {
         highlightCountryBoundary(currentCountry.geometry);
     } else {
@@ -944,7 +1048,7 @@ function createTargetRings() {
     console.log("Creating target ring lines...");
 
     const targetPositionOnSphere = getPointFromLatLon(currentCountry.lat, currentCountry.lon);
-    const targetPositionOffset = targetPositionOnSphere.clone().normalize().multiplyScalar(GLOBE_RADIUS + PIN_OFFSET);
+    const targetPositionOffset = targetPositionOnSphere.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET);
 
     // Get or create the shared geometry
     const ringGeometry = createSharedRingLineGeometry();
@@ -1048,7 +1152,7 @@ function onPointerMove(event) {
 
         if (globeIntersects.length > 0) {
             const intersectionPoint = globeIntersects[0].point;
-            const newPinPosition = intersectionPoint.clone().normalize().multiplyScalar(GLOBE_RADIUS + PIN_OFFSET);
+            const newPinPosition = intersectionPoint.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET);
             // --- Add log here ---
             // console.log(`Updating pin position to: ${newPinPosition.x.toFixed(2)}, ${newPinPosition.y.toFixed(2)}, ${newPinPosition.z.toFixed(2)}`);
             pinSprite.position.copy(newPinPosition);
@@ -1074,20 +1178,36 @@ async function initGame() {
     console.log("Initializing game...");
     setupEventListeners();
     hideCountryInfoPanel();
-    initMap();
+    initMap(); // Init map first
+    initSlipstreamParticles(); // Initialize particle system
 
-    await loadCountryData();
-    await loadFactsData();
+    // Load data concurrently
+    const dataPromises = [
+        loadCountryData(),
+        loadFactsData(),
+        loadAirplaneModel() // Load airplane model
+    ];
 
-    if (countriesData.length > 0) {
-        startNewRound();
-    } else {
-        console.error("Cannot start round, no country data loaded.");
+    try {
+        await Promise.all(dataPromises); // Wait for all essential data
+        console.log("All essential data loaded.");
+
+        if (countriesData.length > 0) {
+            startNewRound();
+        } else {
+            console.error("Cannot start round, no country data loaded.");
+            guessButton.disabled = true;
+            nextButton.disabled = true;
+        }
+    } catch (error) {
+        console.error("Error during game initialization loading:", error);
+        // Handle critical loading errors (e.g., display message to user)
+        countryNameElement.textContent = "Error initializing game!";
         guessButton.disabled = true;
         nextButton.disabled = true;
     }
 
-    console.log("Game initialized.");
+    console.log("Game initialization sequence complete.");
 }
 
 // Start Game
@@ -1234,4 +1354,170 @@ function isPointInCountry(pointCoords, countryGeometry) {
     }
     return false;
 }
-// --- End Point-in-Polygon Logic --- 
+// --- End Point-in-Polygon Logic ---
+
+// --- Load Airplane Model ---
+async function loadAirplaneModel() {
+    return new Promise((resolve, reject) => {
+        console.log("Loading airplane model...");
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+            'assets/airplane.glb',
+            (gltf) => {
+                airplaneModel = gltf.scene;
+                // Pre-scale the model once loaded
+                airplaneModel.scale.set(AIRPLANE_SCALE, AIRPLANE_SCALE, AIRPLANE_SCALE);
+                // Optional: traverse and set castShadow=true for parts if desired
+                airplaneModel.traverse((node) => {
+                    if (node.isMesh) {
+                         node.castShadow = true;
+                         console.log("Airplane Mesh Material:", node.material); // Log material info
+                         // Optional: If model looks dark, you might need to adjust material
+                         // node.material.metalness = 0.1;
+                         // node.material.roughness = 0.8;
+                    }
+                });
+                console.log("Airplane model loaded and processed.");
+                resolve(); // Resolve the promise when loading is complete
+            },
+            undefined, // Progress callback (optional)
+            (error) => {
+                console.error('Error loading airplane model:', error);
+                airplaneModel = null; // Ensure it's null on error
+                reject(error); // Reject the promise on error
+            }
+        );
+    });
+}
+
+// --- Function to remove the active airplane ---
+function removeActiveAirplane() {
+    if (activeAirplane) {
+        console.log("Removing active airplane...");
+        scene.remove(activeAirplane);
+        // If you cloned materials, you might need to dispose them too.
+        // For simple clones, geometry/material disposal is often handled by the source model.
+        activeAirplane = null;
+    }
+    // Hide particles when plane stops/is removed
+    if (slipstreamParticles) {
+       slipstreamParticles.visible = false; // Hide until next emission
+    }
+}
+
+// --- Initialize Slipstream ---
+function initSlipstreamParticles() {
+    console.log("Initializing slipstream particle system...");
+    slipstreamGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(MAX_PARTICLES * 3);
+    const colors = new Float32Array(MAX_PARTICLES * 3); // r, g, b for each particle
+
+    // Initialize particle data storage
+    particleData = [];
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+        positions[i * 3] = 0;
+        positions[i * 3 + 1] = 0;
+        positions[i * 3 + 2] = 0;
+        colors[i * 3] = 1; // Constant White
+        colors[i * 3 + 1] = 1;
+        colors[i * 3 + 2] = 1;
+        particleData.push({
+            position: new THREE.Vector3(0, 0, 0),
+            velocity: new THREE.Vector3(0, 0, 0), // <<< ADD VELOCITY
+            age: PARTICLE_LIFETIME
+        });
+    }
+
+    slipstreamGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    slipstreamGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // <<< REMOVED
+
+    // Create material
+    particleMaterial = new THREE.PointsMaterial({
+        size: 0.02,
+        vertexColors: false, // <<< SET TO FALSE - Color is constant white now
+        color: 0xffffff,   // <<< SET BASE COLOR HERE
+        transparent: true,
+        opacity: 0.6,
+        depthWrite: false
+    });
+
+    slipstreamParticles = new THREE.Points(slipstreamGeometry, particleMaterial);
+    slipstreamParticles.visible = false;
+    scene.add(slipstreamParticles);
+    console.log("Slipstream particle system initialized.");
+}
+
+// --- Helper to Emit Particles ---
+let nextParticleIndex = 0;
+function emitSlipstreamParticle(originPosition) {
+    if (!slipstreamParticles || !activeAirplane) return;
+
+    const planeDirection = activeAirplane.getWorldDirection(new THREE.Vector3());
+
+    for (let i = 0; i < PARTICLES_PER_FRAME; i++) {
+        const pIndex = nextParticleIndex % MAX_PARTICLES;
+        const p = particleData[pIndex];
+
+        // Start slightly behind the plane
+        const backwardOffset = planeDirection.clone().multiplyScalar(-0.1); // Adjust offset if needed
+        p.position.copy(originPosition).add(backwardOffset);
+
+        // Initial velocity slightly randomized, generally backwards/outwards
+        p.velocity.copy(planeDirection).multiplyScalar(-0.2); // Base velocity moving away from plane direction
+        p.velocity.x += (Math.random() - 0.5) * PARTICLE_INITIAL_SPREAD; // Add random spread
+        p.velocity.y += (Math.random() - 0.5) * PARTICLE_INITIAL_SPREAD;
+        p.velocity.z += (Math.random() - 0.5) * PARTICLE_INITIAL_SPREAD;
+
+        p.age = 0; // Reset age
+
+        nextParticleIndex++;
+    }
+     slipstreamParticles.visible = true;
+}
+
+// --- Update Slipstream ---
+function updateSlipstream(deltaTime) {
+    if (!slipstreamParticles || !slipstreamGeometry) return;
+
+    const positions = slipstreamGeometry.attributes.position.array;
+    let needsPosUpdate = false;
+
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+        const p = particleData[i];
+        if (p.age < PARTICLE_LIFETIME) {
+            p.age += deltaTime;
+
+            // --- Apply Turbulence & Damping ---
+            // Add random turbulence vector
+            const turbulence = new THREE.Vector3(
+                (Math.random() - 0.5),
+                (Math.random() - 0.5),
+                (Math.random() - 0.5)
+            ).multiplyScalar(PARTICLE_TURBULENCE * deltaTime); // Scale turbulence by delta time
+            p.velocity.add(turbulence);
+
+            // Apply damping
+            p.velocity.multiplyScalar(Math.pow(PARTICLE_DAMPING, deltaTime*60)); // Apply damping based on time
+
+            // Update position based on velocity
+            p.position.addScaledVector(p.velocity, deltaTime);
+            // --- End Turbulence & Damping ---
+
+            // Update geometry attributes
+            positions[i * 3] = p.position.x;
+            positions[i * 3 + 1] = p.position.y;
+            positions[i * 3 + 2] = p.position.z;
+            needsPosUpdate = true;
+
+        } else if (positions[i*3] < 10000) { // Check if it's not already hidden
+             // Hide dead particles (move them far away) only once
+             positions[i * 3] = 10000;
+             positions[i * 3 + 1] = 10000;
+             positions[i * 3 + 2] = 10000;
+             needsPosUpdate = true;
+             p.velocity.set(0,0,0); // Reset velocity for hidden particles
+        }
+    }
+
+    if (needsPosUpdate) slipstreamGeometry.attributes.position.needsUpdate = true;
+} 

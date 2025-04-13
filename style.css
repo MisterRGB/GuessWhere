@@ -332,7 +332,9 @@ body {
     }
     #left-panel #game-info p {
         font-size: 0.9em;
-        margin: 6px 0;
+        margin: 3px 15px 3px 0; /* Adjust vertical margin, add right margin */
+        display: inline-block; /* Make paragraphs flow inline */
+        vertical-align: middle; /* Align items vertically if they wrap */
         word-wrap: break-word;
         overflow-wrap: break-word;
     }
