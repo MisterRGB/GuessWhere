@@ -56,6 +56,11 @@ let scoreSprite = null;     // <<< ADDED: Score Sprite {{ insert }}
 let scoreCanvas = null;       // <<< ADDED: Score Canvas Element {{ insert }}
 let scoreCanvasContext = null;// <<< ADDED: Score Canvas Context {{ insert }}
 let scoreTexture = null;    // <<< ADDED: Score Texture {{ insert }}
+// Add variables for distance text display
+let distanceCanvas = null;
+let distanceContext = null;
+let distanceTexture = null;
+let distanceTextSprite = null;
 
 // --- Constants ---
 const MARKER_COLOR = 0xff0000; // Red
@@ -183,7 +188,7 @@ function initMap() {
     camera.position.z = 10;
 
     // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); // <<< Ensure alpha: true is present
     renderer.setSize(mapContainer.clientWidth, mapContainer.clientHeight);
     renderer.shadowMap.enabled = shadowToggleCheckbox.checked; // Set initial state
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -245,20 +250,56 @@ function initMap() {
 
     // Globe
     const globeGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
+
     // --- Texture Loading ---
-    // Loading the local texture file
     const textureLoader = new THREE.TextureLoader();
+
+    // Load the base color texture (as before)
     const texture = textureLoader.load(
-        'assets/8k_earth_daymap.jpg', // <--- Change this line to the local path
-        () => { console.log("Texture loaded successfully."); },
+        'assets/8k_earth_daymap.jpg', // Assuming this is your base color map
+        () => { console.log("Base color texture loaded successfully."); },
         undefined,
-        (err) => { console.error('Error loading texture:', err); }
+        (err) => { console.error('Error loading base color texture:', err); }
     );
-     const material = new THREE.MeshStandardMaterial({
-        map: texture,
-        roughness: 0.8, // Adjust appearance as needed
-        metalness: 0.2
+
+    // <<< ADDED: Load Normal Map >>>
+    const normalTexture = textureLoader.load(
+        'assets/world_texture_2normal.png', // Path to your normal map
+        () => { console.log("Normal map texture loaded successfully."); },
+        undefined,
+        (err) => { console.error('Error loading normal map texture:', err); }
+    );
+
+    // <<< ADDED: Load Specular/Roughness Map >>>
+    // We'll use the specular map as a roughness map for MeshStandardMaterial.
+    // Often, specular maps are inverted roughness maps (white = shiny = low roughness).
+    // If the globe looks inverted (water shiny, land dull), you might need to adjust this.
+    const roughnessTexture = textureLoader.load(
+        'assets/world_texture_2specular.png', // Path to your specular map
+        () => { console.log("Specular/Roughness map texture loaded successfully."); },
+        undefined,
+        (err) => { console.error('Error loading specular/roughness map texture:', err); }
+    );
+
+    // --- Modify Material Definition ---
+    const material = new THREE.MeshStandardMaterial({
+        map: texture,                 // Base color
+        normalMap: normalTexture,     // Normal map
+        roughnessMap: roughnessTexture, // Roughness map (using specular)
+        // normalScale: new THREE.Vector2(0.5, 0.5), // Keep commented or adjust if needed
+        
+        // <<< DECREASE BASE ROUGHNESS >>>
+        // Lower values make the surface generally shinier.
+        // The roughnessMap then adds variation on top of this base value.
+        // Try a value significantly less than 1.0.
+        roughness: 0.7, // <<< CHANGE (Was likely 1.0 or default) - Try 0.5 first, adjust lower (e.g., 0.3) if needed.
+
+        // <<< Optionally slightly INCREASE METALNESS >>>
+        // This can also enhance reflections, but use sparingly for Earth.
+        metalness: 0.15 // <<< Optional: Try increasing slightly from 0.1 if needed.
     });
+    // --- End Modify Material ---
+
     globe = new THREE.Mesh(globeGeometry, material);
     // --- Globe Receives Shadows ---
     globe.receiveShadow = true; // Globe can always receive shadows if enabled
@@ -296,6 +337,56 @@ function initMap() {
     }
     // --- End Cloud Layer ---
 
+    // --- Atmospheric Edge Glow ---
+    // const glowColor = new THREE.Color(0x90c8ff); // Light sky blue color
+    // const atmosphereSizeFactor = 1.03; // How much larger than Earth (e.g., 1.03 = 3% larger radius)
+    // const atmosphereGeometry = new THREE.SphereGeometry(EARTH_RADIUS * atmosphereSizeFactor, 64, 64);
+
+    // const atmosphereMaterial = new THREE.ShaderMaterial({
+    //     uniforms: {
+    //         glowColor: { value: glowColor },
+    //         viewVector: { value: camera.position } // Updated in animate
+    //     },
+    //     vertexShader: `
+    //         uniform vec3 viewVector;
+    //         varying float intensity;
+    //         void main() {
+    //             vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
+    //             vec3 worldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+    //             vec3 I = normalize( worldPosition.xyz - viewVector );
+
+    //             // Use a moderate power for Fresnel - controls thickness/falloff
+    //             intensity = pow( 1.0 - abs(dot(worldNormal, I)), 2.5 ); // Power 2.0-3.0 often looks good
+
+    //             gl_Position = projectionMatrix * viewMatrix * worldPosition;
+    //         }
+    //     `,
+    //     fragmentShader: `
+    //         uniform vec3 glowColor;
+    //         varying float intensity;
+    //         void main() {
+    //             float clampedIntensity = max(0.0, intensity);
+
+    //             // Alpha based on intensity - make it somewhat subtle
+    //             float alpha = clampedIntensity * 0.6; // Adjust multiplier (e.g., 0.5 - 0.8)
+
+    //             // Use the glow color directly
+    //             vec3 finalColor = glowColor;
+
+    //             gl_FragColor = vec4( finalColor, alpha );
+    //         }
+    //     `,
+    //     side: THREE.BackSide, // Render the inside facing surface
+    //     blending: THREE.AdditiveBlending, // Good for glows
+    //     transparent: true,
+    //     depthWrite: false
+    // });
+
+    // atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial); // Assign to the new variable
+    // scene.add(atmosphereMesh);
+    // console.log("Added atmospheric edge glow mesh.");
+    // --- End Atmospheric Edge Glow ---
+
     // Controls
     controls = new THREE.OrbitControls(camera, renderer.domElement);
 
@@ -330,7 +421,7 @@ function initMap() {
     // Start animation loop
     animate();
 
-    console.log("Map initialized with shadows enabled.");
+    console.log("Map initialized with normal and roughness maps.");
 }
 
 function onWindowResize() {
@@ -358,6 +449,15 @@ function animate() {
         cloudMesh.rotation.x = Math.sin(elapsedTime * CLOUD_X_OSCILLATION_FREQUENCY) * CLOUD_X_OSCILLATION_AMPLITUDE;
         cloudMesh.rotation.y += CLOUD_ROTATION_SPEED * deltaTime;
     }
+
+    // --- Update Controls ---
+    // controls.update(); // Moved camera logic block earlier, this might be redundant here
+
+    // --- Update Atmosphere Uniforms ---
+    // if (atmosphereMesh && atmosphereMesh.material.type === 'ShaderMaterial') {
+    //     atmosphereMesh.material.uniforms.viewVector.value.copy(camera.position);
+    // }
+    // --- End Atmosphere Update ---
 
     // --- Camera Logic ---
     if (isCameraFollowing && currentLineCurve && isLineAnimating) {
@@ -588,15 +688,25 @@ async function loadCountryData() {
         countriesData = geojsonData.features.map(feature => {
             const properties = feature.properties;
             const geometry = feature.geometry;
+            const name = properties.COUNTRY || properties.name || properties.ADMIN || properties.NAME_EN || properties.NAME || properties.NAME_LONG;
 
-            // --- More robust name finding ---
-            const name = properties.COUNTRY || properties.name || properties.ADMIN || properties.NAME_EN || properties.NAME || properties.NAME_LONG; // Added NAME_LONG
-            // --- End name finding ---
+            // --- Determine and Validate Alpha2Code ---
+            const alpha2Code = properties.ISO ||
+                               properties.ISO_A2 ||
+                               properties.iso_a2 ||
+                               properties.alpha2Code ||
+                               properties.ISO_A2_EH ||
+                               properties["ISO3166-1-Alpha-2"];
 
-            const alpha2Code = properties.ISO || properties.ISO_A2 || properties.iso_a2 || properties.alpha2Code || properties.ISO_A2_EH;
+            // Validate the code strictly: must be a 2-character string, not '-99' etc.
+            const validAlpha2Code = (alpha2Code && typeof alpha2Code === 'string' && alpha2Code.length === 2 && alpha2Code !== '-99')
+                                   ? alpha2Code.toLowerCase()
+                                   : null;
+            // --- End Alpha2Code Validation ---
+
 
             // Find representative point (BEST EFFORT - Do not require)
-            let lat = null, lon = null; // <<< Initialize as null
+            let lat = null, lon = null;
             if (geometry && geometry.type === 'Point' && geometry.coordinates) {
                  [lon, lat] = geometry.coordinates;
             } else if (properties.lat && properties.lon) {
@@ -611,35 +721,30 @@ async function loadCountryData() {
              if (lon !== null && typeof lon === 'string') lon = parseFloat(lon);
 
 
-            // --- MODIFIED Validation: Require name and valid geometry type ---
-            if (!name || !geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) {
-                // Skip if essential info is missing (name or valid shape geometry)
-                // Allow features without representative lat/lon in properties, as center can be calculated
-                 console.warn("Skipping feature due to missing name or invalid/missing boundary geometry:", { name, type: geometry?.type });
-                return null;
+            // --- STRONGER Validation: Require name, valid geometry, AND valid alpha2Code ---
+            if (!name || !geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') || !validAlpha2Code) {
+                // Skip if essential info is missing (name, valid shape, or valid 2-letter code)
+                 console.warn(`Filtering out feature: Missing name, invalid geometry, or invalid/missing alpha2Code.`,
+                              { name, type: geometry?.type, codeFound: alpha2Code, codeValid: !!validAlpha2Code });
+                return null; // <<< Return null to filter this feature out
             }
-            // --- End MODIFIED Validation ---
+            // --- End STRONGER Validation ---
 
-            // Log if representative lat/lon was NOT found in properties (useful info)
+            // Log if representative lat/lon was NOT found (keep this logic)
             if (lat === null || lon === null || isNaN(lat) || isNaN(lon)) {
                 console.log(`Note: Representative lat/lon properties not found or invalid for ${name}. Center will be calculated from geometry.`);
-                lat = 0; // Assign placeholder if missing, center calculation will fix later
+                lat = 0;
                 lon = 0;
             }
 
-
-            const validAlpha2Code = (alpha2Code && typeof alpha2Code === 'string' && alpha2Code.length === 2) ? alpha2Code.toLowerCase() : null;
-            if (!validAlpha2Code && name) console.warn(`Could not find valid alpha2Code for country: ${name}`, properties);
-
-
             return {
                 name,
-                lat, // Store representative lat/lon (or placeholders)
+                lat,
                 lon,
-                alpha2Code: validAlpha2Code,
-                geometry: geometry // Store the boundary geometry
+                alpha2Code: validAlpha2Code, // Store the validated, non-null code
+                geometry: geometry
             };
-        }).filter(country => country !== null); // Keep the filter for nulls returned by validation
+        }).filter(country => country !== null); // Filter out the nulls returned above
 
         if (countriesData.length === 0) {
             console.error("No valid country data extracted from countries_shapes.geojson. Check the first feature properties log above and adjust property names in the script if needed.");
@@ -826,6 +931,15 @@ async function startNewRound() {
         currentDistanceLine = null;
     }
 
+    // Hide distance text
+    if (distanceTextSprite) {
+        distanceTextSprite.visible = false;
+    }
+    // Hide score text (already handled in animate loop check, but good to be explicit)
+    if (scoreSprite) {
+        scoreSprite.visible = false;
+    }
+
     // Ensure the country selection is always random:
     currentCountry = selectRandomCountry();
     console.log(`Starting random round. Selected country: ${currentCountry ? currentCountry.name : 'None'}`);
@@ -909,7 +1023,11 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
         Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Math.round(R * c);
+    return Math.round(R * c); // Returns distance in km
+}
+
+function deg2rad(deg) {
+    return deg * (Math.PI / 180);
 }
 
 // --- Helper function to calculate the geometric center of loaded boundary ---
@@ -980,23 +1098,25 @@ async function handleGuessConfirm() {
     let distance = null; // Initialize distance
 
     // --- Calculate True Center Vector FIRST (if geometry exists) ---
+    // This block remains the same - it calculates targetCountryCenterVector
     if (currentCountry.geometry) {
         const calculatedCenter = calculateGeometryCenter(currentCountry.geometry);
         if (calculatedCenter) {
             targetCountryCenterVector.copy(calculatedCenter);
              console.log(`Stored target country center vector from GEOMETRY: (${targetCountryCenterVector.x.toFixed(2)}, ${targetCountryCenterVector.y.toFixed(2)}, ${targetCountryCenterVector.z.toFixed(2)})`);
         } else {
-            // Fallback if center calculation failed, use the point data
             targetCountryCenterVector = getPointFromLatLon(currentCountry.lat, currentCountry.lon);
              console.warn(`Geometry center calculation failed. Falling back to point data for center vector: (${targetCountryCenterVector.x.toFixed(2)}, ${targetCountryCenterVector.y.toFixed(2)}, ${targetCountryCenterVector.z.toFixed(2)})`);
         }
     } else {
-        // Fallback if geometry didn't load at all
         targetCountryCenterVector = getPointFromLatLon(currentCountry.lat, currentCountry.lon);
          console.log(`No geometry loaded. Stored target country center vector from POINT data: (${targetCountryCenterVector.x.toFixed(2)}, ${targetCountryCenterVector.y.toFixed(2)}, ${targetCountryCenterVector.z.toFixed(2)})`);
     }
     // --- End Calculate True Center Vector ---
 
+    // --- Convert the targetCountryCenterVector back to Lat/Lon for distance calculation ---
+    const targetCenterLatLon = getLatLonFromPoint(targetCountryCenterVector);
+    // --- End Conversion ---
 
     // --- SCORING LOGIC (Uses geometry or fallback) ---
     if (currentCountry.geometry) {
@@ -1004,37 +1124,36 @@ async function handleGuessConfirm() {
         if (isInside) {
             console.log("Guess is INSIDE country boundary!");
             roundScore = 1000;
-            distance = 0; // Display 0 distance for perfect guess
+            distance = 0; // Still display 0 distance for perfect guess
         } else {
-            console.log("Guess is OUTSIDE country boundary. Calculating score by distance to CENTER point.");
-            // Calculate distance to the representative center point for scoring consistency
-            const centerPointCoords = { lat: currentCountry.lat, lon: currentCountry.lon };
+            console.log("Guess is OUTSIDE country boundary. Calculating score by distance to GEOMETRIC center.");
+            // Calculate distance to the GEOMETRIC center point
             distance = calculateDistance(
-        playerGuess.lat, playerGuess.lon,
-                centerPointCoords.lat, centerPointCoords.lon // Use center point coords from geojson for distance score
+                playerGuess.lat, playerGuess.lon,
+                targetCenterLatLon.lat, targetCenterLatLon.lon // <<< USE DERIVED LAT/LON
             );
             // Apply the 3000km threshold scoring
-            if (distance <= 3000) { // <<< KEEPING 3000km THRESHOLD
-                roundScore = 2000 - distance; // <<< KEEPING 2000 base
+            if (distance <= 3000) {
+                roundScore = 2000 - distance;
                 console.log(`Distance (${distance}km) <= 3000km. Score: ${roundScore}`);
             } else {
-                roundScore = 0; // Outside 3000km range
+                roundScore = 0;
                  console.log(`Distance (${distance}km) > 3000km. Score: 0`);
             }
         }
     } else { // Fallback if boundary data failed to load
-        console.warn("No boundary data for country, calculating score by distance to CENTER point only.");
-         const centerPointCoords = { lat: currentCountry.lat, lon: currentCountry.lon };
+        console.warn("No boundary data for country, calculating score by distance to FALLBACK center point only.");
+        // Calculate distance to the FALLBACK center point (which is already derived from .lat/.lon)
         distance = calculateDistance(
             playerGuess.lat, playerGuess.lon,
-            centerPointCoords.lat, centerPointCoords.lon // Use center point coords
+            targetCenterLatLon.lat, targetCenterLatLon.lon // <<< USE DERIVED LAT/LON (consistent logic)
         );
         // Apply the 3000km threshold scoring (fallback)
-        if (distance <= 3000) { // <<< KEEPING 3000km THRESHOLD
-            roundScore = 2000 - distance; // <<< KEEPING 2000 base
+        if (distance <= 3000) {
+            roundScore = 2000 - distance;
              console.log(`Fallback: Distance (${distance}km) <= 3000km. Score: ${roundScore}`);
         } else {
-            roundScore = 0; // Outside 3000km range
+            roundScore = 0;
              console.log(`Fallback: Distance (${distance}km) > 3000km. Score: 0`);
         }
     }
@@ -1045,18 +1164,36 @@ async function handleGuessConfirm() {
     // Update total score and UI
     score += roundScore;
     scoreElement.textContent = score;
-    distanceElement.textContent = distance !== null ? `${distance}` : 'Error'; // Display calculated distance or 0
+    distanceElement.textContent = distance !== null ? `${distance}` : 'Error';
+
+    // Display Distance Text Above Pin
+    if (distanceTextSprite && pinSprite && distance !== null) {
+        distanceContext.clearRect(0, 0, distanceCanvas.width, distanceCanvas.height);
+        const distanceString = `${distance} km`;
+        distanceContext.fillText(distanceString, distanceCanvas.width / 2, distanceCanvas.height / 2);
+        distanceTexture.needsUpdate = true;
+        const pinPosition = pinSprite.position;
+        const surfaceNormal = pinPosition.clone().normalize();
+        const textOffset = PIN_OFFSET + 0.2;
+        const textPosition = pinPosition.clone().addScaledVector(surfaceNormal, textOffset);
+        distanceTextSprite.position.copy(textPosition);
+        distanceTextSprite.visible = true;
+        console.log(`Displaying distance text "${distanceString}" above pin.`);
+    }
+
 
     // Log results
     console.log(`Guessed: ${playerGuess.lat.toFixed(2)}, ${playerGuess.lon.toFixed(2)}`);
-    console.log(`Actual (Center Point): ${currentCountry.lat.toFixed(2)}, ${currentCountry.lon.toFixed(2)}`);
-    console.log(`Actual (Calculated Geometry Center 3D): (${targetCountryCenterVector.x.toFixed(2)}, ${targetCountryCenterVector.y.toFixed(2)}, ${targetCountryCenterVector.z.toFixed(2)})`); // Log the used center
+    // console.log(`Actual (Center Point): ${currentCountry.lat.toFixed(2)}, ${currentCountry.lon.toFixed(2)}`); // Keep or remove this log
+    console.log(`Target Center (Lat/Lon Used for Dist): ${targetCenterLatLon.lat.toFixed(2)}, ${targetCenterLatLon.lon.toFixed(2)}`); // Log the derived coords
+    console.log(`Target Center (Calculated Geometry Center 3D): (${targetCountryCenterVector.x.toFixed(2)}, ${targetCountryCenterVector.y.toFixed(2)}, ${targetCountryCenterVector.z.toFixed(2)})`); // Log the used vector
     console.log(`Distance: ${distance} km, Score: ${roundScore}`);
 
 
     // --- Draw distance line AND Prepare Curve (Uses calculated targetCountryCenterVector) ---
+    // This part remains the same as it already uses targetCountryCenterVector
     const startVec = pinSprite.position.clone().normalize().multiplyScalar(EARTH_RADIUS);
-    const endVec = targetCountryCenterVector.clone(); // <<< USES THE CORRECTLY CALCULATED CENTER
+    const endVec = targetCountryCenterVector.clone();
     const points = [];
     const numPoints = 50;
     const arcOffset = DISTANCE_LINE_OFFSET;
@@ -1117,7 +1254,7 @@ async function handleGuessConfirm() {
     }
     // --- End Camera Glide Setup ---
 
-    nextButton.style.display = 'block';
+    nextButton.style.display = 'block'; // Show next button
 
     currentRoundScore = roundScore;
 }
@@ -1365,6 +1502,7 @@ async function initGame() {
     setupEventListeners();
     hideCountryInfoPanel();
     initScoreDisplay();
+    initDistanceDisplay(); // <<< Call should be here, AFTER the function definition
 
     const dataPromises = [
         loadCountryData(),
@@ -1393,7 +1531,7 @@ async function initGame() {
 }
 
 // Start Game
-window.onload = initGame;
+window.onload = initGame; // <<< initGame call happens here
 
 // Function to show the info panel (Mobile layout structure built here)
 function showCountryInfoPanel(country) {
@@ -1583,3 +1721,43 @@ function initScoreDisplay() {
     console.log("Score display initialized.");
 }
 // --- END NEW FUNCTION ---
+
+// --- NEW FUNCTION: Initialize Distance Text Display --- // <<< PASTE THE FUNCTION DEFINITION HERE
+function initDistanceDisplay() {
+    console.log("Initializing distance text display elements...");
+    // Create canvas dynamically
+    distanceCanvas = document.createElement('canvas');
+    if (!distanceCanvas) {
+        console.error("Failed to create distance canvas element!");
+        return;
+    }
+    distanceCanvas.width = SCORE_CANVAS_WIDTH; // Reuse score canvas dimensions for simplicity
+    distanceCanvas.height = SCORE_CANVAS_HEIGHT / 2; // Can be shorter
+    distanceContext = distanceCanvas.getContext('2d');
+
+    // Initial canvas clear and style setup
+    distanceContext.font = `bold ${SCORE_FONT_SIZE * 0.8}px Arial`; // Slightly smaller font
+    distanceContext.fillStyle = '#ffffff'; // White text
+    distanceContext.textAlign = 'center';
+    distanceContext.textBaseline = 'middle';
+    distanceContext.clearRect(0, 0, distanceCanvas.width, distanceCanvas.height);
+
+    distanceTexture = new THREE.CanvasTexture(distanceCanvas);
+
+    const distanceMaterial = new THREE.SpriteMaterial({
+        map: distanceTexture,
+        transparent: true,
+        depthWrite: false,
+        depthTest: true, // Test against other objects
+        sizeAttenuation: true
+    });
+
+    distanceTextSprite = new THREE.Sprite(distanceMaterial);
+    // Adjust scale based on new canvas aspect ratio
+    distanceTextSprite.scale.set(SCORE_SPRITE_SCALE * 0.8, SCORE_SPRITE_SCALE * 0.8 * (distanceCanvas.height / distanceCanvas.width), 1);
+    distanceTextSprite.position.set(0, 10000, 0); // Start hidden
+    distanceTextSprite.visible = false;
+    scene.add(distanceTextSprite);
+    console.log("Distance text display initialized.");
+}
+// --- END DISTANCE FUNCTION ---
