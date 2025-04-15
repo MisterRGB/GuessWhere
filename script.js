@@ -441,7 +441,7 @@ function calculateCameraDistanceForRadius(targetRadius, cameraFovRadians) {
 
 function animate() {
     requestAnimationFrame(animate);
-    const deltaTime = clock.getDelta();
+    const deltaTime = clock.getDelta(); // Ensure deltaTime is available
     const elapsedTime = clock.getElapsedTime();
     const now = performance.now();
 
@@ -498,6 +498,51 @@ function animate() {
         controls.update();
     }
     // --- End Camera Logic ---
+
+    // --- Shooting Star Logic ---
+    // Attempt to spawn a new star
+    if (Math.random() < SHOOTING_STAR_SPAWN_CHANCE) {
+        const inactiveStar = shootingStars.find(s => !s.active);
+        if (inactiveStar) {
+            // Activate and position the star
+            inactiveStar.active = true;
+            inactiveStar.mesh.visible = true;
+
+            // Random position on spawn sphere surface
+            const theta = Math.random() * Math.PI * 2; // Random angle
+            const phi = Math.acos(2 * Math.random() - 1); // Random angle for uniform sphere distribution
+            inactiveStar.mesh.position.setFromSphericalCoords(SHOOTING_STAR_SPAWN_RADIUS, phi, theta);
+
+            // Random velocity direction (mostly towards opposite side of origin)
+            const targetPos = inactiveStar.mesh.position.clone()
+                .multiplyScalar(-1) // Target opposite side
+                .add(new THREE.Vector3(
+                    (Math.random() - 0.5) * STARFIELD_RADIUS * 0.5, // Add some randomness
+                    (Math.random() - 0.5) * STARFIELD_RADIUS * 0.5,
+                    (Math.random() - 0.5) * STARFIELD_RADIUS * 0.5
+                ));
+            inactiveStar.velocity.subVectors(targetPos, inactiveStar.mesh.position)
+                .normalize()
+                .multiplyScalar(SHOOTING_STAR_SPEED + (Math.random() - 0.5) * SHOOTING_STAR_SPEED * 0.5); // Add speed variation
+
+            // Orient the line segment to follow velocity
+            inactiveStar.mesh.lookAt(inactiveStar.mesh.position.clone().add(inactiveStar.velocity));
+        }
+    }
+
+    // Update active stars
+    shootingStars.forEach(star => {
+        if (star.active) {
+            star.mesh.position.addScaledVector(star.velocity, deltaTime);
+
+            // Check if star is too far away
+            if (star.mesh.position.lengthSq() > SHOOTING_STAR_DESPAWN_RADIUS_SQ) {
+                star.active = false;
+                star.mesh.visible = false;
+            }
+        }
+    });
+    // --- End Shooting Star Logic ---
 
     if (isLineAnimating) {
         const lineElapsedTime = now - lineAnimationStartTime;
@@ -1502,7 +1547,8 @@ async function initGame() {
     setupEventListeners();
     hideCountryInfoPanel();
     initScoreDisplay();
-    initDistanceDisplay(); // <<< Call should be here, AFTER the function definition
+    initDistanceDisplay();
+    initShootingStars(); // <<< ADD THIS CALL
 
     const dataPromises = [
         loadCountryData(),
@@ -1761,3 +1807,49 @@ function initDistanceDisplay() {
     console.log("Distance text display initialized.");
 }
 // --- END DISTANCE FUNCTION ---
+
+// ... Constants ...
+const NUM_SHOOTING_STARS = 15; // How many potential shooting stars in the pool
+const SHOOTING_STAR_SPEED = 150; // Speed of the stars (units per second)
+const SHOOTING_STAR_LENGTH = 2; // Length of the star streak
+const SHOOTING_STAR_SPAWN_RADIUS = STARFIELD_RADIUS * 1.1; // Radius where stars spawn
+const SHOOTING_STAR_DESPAWN_RADIUS_SQ = (STARFIELD_RADIUS * 1.3) ** 2; // Squared radius for despawn check
+const SHOOTING_STAR_SPAWN_CHANCE = 0.003; // Chance per frame to spawn a star
+
+// ... Three.js Variables ...
+let shootingStars = []; // Array to hold shooting star data ({mesh, velocity, active})
+let shootingStarMaterial; // Shared material
+
+// --- Initialize Shooting Stars ---
+function initShootingStars() {
+    console.log("Initializing shooting stars...");
+    shootingStarMaterial = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        linewidth: 1, // Might not be supported on all platforms, but worth trying
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending, // Make them glow bright
+        depthWrite: false,
+        depthTest: false // Render on top
+    });
+
+    // Define the line segment geometry (origin to a point along -Z)
+    const points = [];
+    points.push(new THREE.Vector3(0, 0, 0));
+    points.push(new THREE.Vector3(0, 0, -SHOOTING_STAR_LENGTH)); // Line points backwards along Z
+    const shootingStarGeometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    for (let i = 0; i < NUM_SHOOTING_STARS; i++) {
+        const line = new THREE.Line(shootingStarGeometry, shootingStarMaterial);
+        line.visible = false; // Start hidden
+        line.frustumCulled = false; // Prevent potential culling issues
+        scene.add(line);
+        shootingStars.push({
+            mesh: line,
+            velocity: new THREE.Vector3(),
+            active: false
+        });
+    }
+    console.log(`Created pool of ${NUM_SHOOTING_STARS} shooting stars.`);
+}
+// --- End Initialize Shooting Stars ---
