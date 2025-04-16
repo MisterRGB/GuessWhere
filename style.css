@@ -207,11 +207,10 @@ body {
 
 #map-container canvas {
     /* Tighter, less hazy glow */
-    filter:
+    /* filter: */
         /* Outer, tighter, softer blue */
-        drop-shadow(0 0 15px rgb(0, 0, 0)) /* Reduced blur (15px), reduced opacity (0.3) */
-        /* Inner, tighter, slightly brighter */
-        drop-shadow(0 0 6px rgba(255, 255, 255, 0.438)); /* Reduced blur (6px), reduced opacity (0.4) */
+        /* drop-shadow(0 0 15px rgb(0, 0, 0)) */
+        /* drop-shadow(0 0 6px rgba(255, 255, 255, 0.438)); */
 
     /* Ensure rendering quality */
     -webkit-backface-visibility: hidden;

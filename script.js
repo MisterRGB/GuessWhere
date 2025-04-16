@@ -63,6 +63,7 @@ let distanceCanvas = null;
 let distanceContext = null;
 let distanceTexture = null;
 let distanceTextSprite = null;
+let lensflare = null; // <<< ADDED: Variable for lens flare
 
 // --- Constants ---
 const MARKER_COLOR = 0xff0000; // Red
@@ -227,31 +228,66 @@ function initMap() {
     // --- End Starfield ---
 
     // --- Lighting Setup ---
-    // Determine initial intensities based on checkbox
     const initialShadowState = shadowToggleCheckbox.checked;
-    const initialAmbientIntensity = initialShadowState ? 0.6 : 1.2; // Lower if shadows ON, higher if OFF
-    const initialSunIntensity = 1.0; // Keep sun intensity constant for now
+    const initialAmbientIntensity = initialShadowState ? 0.6 : 1.2;
+    const initialSunIntensity = 1.0;
 
     ambientLight = new THREE.AmbientLight(0xffffff, initialAmbientIntensity);
     scene.add(ambientLight);
 
     sunLight = new THREE.DirectionalLight(0xffffff, initialSunIntensity);
-    sunLight.position.set(5, 3, 5).normalize();
+    // --- Move Light Source Much Further Away ---
+    sunLight.position.set(5 * 100, 3 * 100, 5 * 100); // Set position much further out (e.g., 500, 300, 500)
+    // sunLight.position.normalize(); // No need to normalize directional light position for direction only
+    // --- End Move ---
     sunLight.castShadow = true;
-    // Configure Shadow Camera
-    sunLight.shadow.camera.left = -20; // Adjust as needed
+
+    // --- Shadow Config (keep this) ---
+    sunLight.shadow.camera.left = -20;
     sunLight.shadow.camera.right = 20;
     sunLight.shadow.camera.top = 20;
     sunLight.shadow.camera.bottom = -20;
     sunLight.shadow.camera.near = 0.5;
     sunLight.shadow.camera.far = 50;
 
-    if (initialShadowState) {
-        scene.add(sunLight);
-        console.log(`Shadows initially ON. Ambient: ${initialAmbientIntensity}`);
-    } else {
-        console.log(`Shadows initially OFF. Ambient: ${initialAmbientIntensity}`);
-    }
+    // --- Force Add Light (Keep unconditional add for now) ---
+    scene.add(sunLight);
+    console.log(">>> DEBUG: Unconditionally added sunLight to scene.");
+    sunLight.updateMatrixWorld();
+    const worldPos = new THREE.Vector3();
+    sunLight.getWorldPosition(worldPos);
+    console.log(">>> DEBUG: sunLight world position (now much further):", worldPos);
+    // --- End Force Add Light ---
+
+    // --- Lens Flare (keep as is) ---
+    console.log("Creating lens flare...");
+    const textureLoaderFlare = new THREE.TextureLoader();
+    const textureFlare0 = textureLoaderFlare.load('assets/lensflare0.png', /*...*/ );
+    const textureFlare3 = textureLoaderFlare.load('assets/lensflare3.png', /*...*/ );
+
+    lensflare = new THREE.Lensflare();
+    // Adjust main flare size as needed
+    lensflare.addElement(new THREE.LensflareElement(textureFlare0, 350, 0, sunLight.color));
+    // Secondary elements
+    lensflare.addElement(new THREE.LensflareElement(textureFlare3, 60, 0.1));
+    lensflare.addElement(new THREE.LensflareElement(textureFlare3, 80, 0.3));
+    lensflare.addElement(new THREE.LensflareElement(textureFlare3, 120, 0.5));
+    lensflare.addElement(new THREE.LensflareElement(textureFlare3, 70, 0.7));
+    lensflare.addElement(new THREE.LensflareElement(textureFlare3, 90, 0.85));
+    lensflare.addElement(new THREE.LensflareElement(textureFlare3, 50, 1.0));
+
+    sunLight.add(lensflare); // Add flare as child
+    console.log("Lens flare added to sunLight.");
+    // --- End Lens Flare ---
+
+    // --- REMOVE Lens Flare Debug Helper ---
+    // const lightHelperGeometry = new THREE.SphereGeometry(0.2);
+    // const lightHelperMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    // const lightHelperMesh = new THREE.Mesh(lightHelperGeometry, lightHelperMaterial);
+    // lightHelperMesh.position.copy(sunLight.position);
+    // scene.add(lightHelperMesh);
+    // console.log(">>> DEBUG: Red sphere helper code removed/commented out.");
+    // --- End Remove Debug Helper ---
 
     // Globe
     const globeGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
@@ -578,9 +614,9 @@ function animate() {
         const progress = Math.min(lineElapsedTime / currentAnimationDuration, 1.0);
 
         if (currentDistanceLine) {
-            const pointsToDraw = Math.ceil(lineTotalPoints * progress);
-            const verticesToDraw = Math.max(0, pointsToDraw);
-            currentDistanceLine.geometry.setDrawRange(0, verticesToDraw);
+        const pointsToDraw = Math.ceil(lineTotalPoints * progress);
+        const verticesToDraw = Math.max(0, pointsToDraw);
+        currentDistanceLine.geometry.setDrawRange(0, verticesToDraw);
         }
 
         // --- Score Sprite Animation ---
@@ -655,7 +691,7 @@ function animate() {
                  try {
                      showCountryInfoPanel(currentCountry);
                      console.log("Successfully finished calling showCountryInfoPanel.");
-                 } catch (error) {
+    } catch (error) {
                       console.error("Error occurred *during* showCountryInfoPanel call:", error);
                  }
             }
@@ -721,8 +757,8 @@ async function loadCountryData() {
         console.error("Failed to load or parse country shapes data:", error); // Log the actual error
         countryNameElement.textContent = "Error loading countries!";
         countriesData = [];
-        if (guessButton) guessButton.disabled = true;
-        if (nextButton) nextButton.disabled = true;
+         if (guessButton) guessButton.disabled = true;
+         if (nextButton) nextButton.disabled = true;
     }
 }
 // --- End Function ---
