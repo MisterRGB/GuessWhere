@@ -15,6 +15,7 @@ const panelCountryFacts = document.getElementById('panel-country-facts');
 const cloudToggleCheckbox = document.getElementById('cloud-toggle');
 const shadowToggleCheckbox = document.getElementById('shadow-toggle');
 const fullscreenButton = document.getElementById('fullscreen-button'); // <<< ADD THIS
+const leftPanelElement = document.getElementById('left-panel'); // <<< ADD Left Panel Element
 
 // --- Game State & Data ---
 let score = 0;
@@ -240,18 +241,22 @@ function initMap() {
 
     // --- Lighting Setup ---
     const initialShadowState = shadowToggleCheckbox.checked;
-    const initialAmbientIntensity = initialShadowState ? 0.6 : 1.2;
-    const initialSunIntensity = 1.0;
+    // <<< INCREASE Ambient Intensity when shadows ON (e.g., 0.6 -> 0.9) >>>
+    const initialAmbientIntensity = initialShadowState ? 1.0 : 1.2;
+    // <<< DECREASE Sun Intensity slightly (e.g., 1.0 -> 0.9) >>>
+    const initialSunIntensity = 0.8;
 
     ambientLight = new THREE.AmbientLight(0xffffff, initialAmbientIntensity);
     scene.add(ambientLight);
 
-    sunLight = new THREE.DirectionalLight(0xffffff, initialSunIntensity);
+    sunLight = new THREE.DirectionalLight(0xffffff, initialSunIntensity); // Use new initial sun intensity
+    sunLight.position.set(500, 300, 500);
+    sunLight.castShadow = true;
+
     // --- Move Light Source Much Further Away ---
-    sunLight.position.set(5 * 100, 3 * 100, 5 * 100); // Set position much further out (e.g., 500, 300, 500)
+    // sunLight.position.set(5 * 100, 3 * 100, 5 * 100); // Set position much further out (e.g., 500, 300, 500)
     // sunLight.position.normalize(); // No need to normalize directional light position for direction only
     // --- End Move ---
-    sunLight.castShadow = true;
 
     // --- Shadow Config (keep this) ---
     sunLight.shadow.camera.left = -20;
@@ -474,6 +479,7 @@ function initMap() {
     animate();
 
     console.log("Map initialized with normal and roughness maps.");
+    console.log(`Map initialized. Initial Ambient: ${initialAmbientIntensity}, Initial Sun: ${initialSunIntensity}`);
 }
 
 function onWindowResize() {
@@ -1637,21 +1643,81 @@ function initShootingStars() {
 // --- Add Global Variables for Dragging ---
 // ... (rest of the code) ...
 
-// --- Handler Function for Toggling Panel (Replaces onPanelPointerDown) ---
+// --- NEW Helper Function to Calculate and Set Mobile Panel Height ---
+function updateMobilePanelHeight() {
+    if (!infoPanelElement || !leftPanelElement || window.innerWidth > 768 || !infoPanelElement.classList.contains('up')) {
+        // Only run on mobile when the panel is supposed to be 'up'
+        return;
+    }
+
+    const viewportHeight = window.innerHeight;
+    const leftPanelRect = leftPanelElement.getBoundingClientRect();
+    const leftPanelBottom = leftPanelRect.bottom; // Distance from viewport top to left panel bottom
+
+    // Calculate required height: viewport height minus the space above the left panel's bottom edge
+    // Add a small buffer (e.g., 5px) so they don't visually touch perfectly
+    const buffer = 5;
+    let requiredHeight = viewportHeight - leftPanelBottom - buffer;
+
+    // Ensure a minimum height (e.g., handle height + some padding)
+    const minHeight = 80; // Adjust as needed
+    requiredHeight = Math.max(minHeight, requiredHeight);
+
+    // Ensure it doesn't exceed a maximum reasonable height (e.g., 90vh)
+    requiredHeight = Math.min(requiredHeight, viewportHeight * 0.9);
+
+    console.log(`updateMobilePanelHeight: VP: ${viewportHeight}, LP Bottom: ${leftPanelBottom.toFixed(0)}, Required: ${requiredHeight.toFixed(0)}`);
+    infoPanelElement.style.height = `${requiredHeight}px`;
+}
+
+// --- MODIFY Handler Function for Toggling Panel ---
 function onPanelToggleClick(event) {
-    // Check if the click is directly on the handle
     const handle = event.target.closest('#info-panel-handle');
     if (handle) {
-        console.log(">>> onPanelToggleClick: Handle clicked!"); // <<< ADDED LOG
-        infoPanelElement.classList.toggle('up');
-        console.log(`Panel toggled. Has 'up' class: ${infoPanelElement.classList.contains('up')}`);
-        console.log(`Current infoPanelElement height style: ${infoPanelElement.style.height}`); // Log inline style
+        console.log(">>> onPanelToggleClick: Handle clicked!");
+        const isCurrentlyUp = infoPanelElement.classList.contains('up');
+
+        if (isCurrentlyUp) {
+            // --- If currently UP, toggle DOWN ---
+            infoPanelElement.classList.remove('up');
+            infoPanelElement.style.height = ''; // <<< REMOVE inline style to use CSS default (60px)
+            console.log(`Panel toggled DOWN. Has 'up' class: false. Height reset to CSS default.`);
+        } else {
+            // --- If currently DOWN, toggle UP ---
+            infoPanelElement.classList.add('up');
+            console.log(`Panel toggled UP. Has 'up' class: true. Calculating dynamic height...`);
+            // Calculate and set height AFTER class is added and transition starts
+            requestAnimationFrame(updateMobilePanelHeight); // Use rAF for smoother update
+        }
+
+        // Log the state AFTER toggling
+        // console.log(`Current infoPanelElement height style after toggle: ${infoPanelElement.style.height}`);
     } else {
-        console.log(">>> onPanelToggleClick: Click was not on handle."); // <<< ADDED LOG
+        console.log(">>> onPanelToggleClick: Click was not on handle.");
     }
 }
 
-// --- Update show/hide functions ---
+// --- MODIFY setupEventListeners Function ---
+function setupEventListeners() {
+    // ... existing listeners ...
+
+    window.addEventListener('resize', onWindowResize);
+    console.log("Added listener for window resize.");
+
+    // <<< ADD Resize listener specific for mobile panel height adjustment >>>
+    window.addEventListener('resize', () => {
+        // Recalculate mobile panel height only if it's currently 'up' and on mobile view
+        if (window.innerWidth <= 768 && infoPanelElement && infoPanelElement.classList.contains('up')) {
+            console.log("Window resized while mobile panel is up, recalculating height...");
+            updateMobilePanelHeight();
+        }
+    });
+    console.log("Added resize listener for mobile panel height update.");
+
+    console.log("Event listeners setup complete.");
+}
+
+// --- MODIFY showCountryInfoPanel Function (Minor adjustment) ---
 function showCountryInfoPanel(country) {
     console.log(">>> showCountryInfoPanel called with country:", country);
     if (!country || !country.name) {
@@ -1661,8 +1727,8 @@ function showCountryInfoPanel(country) {
     const countryName = country.name;
     const countryCode = country.alpha2Code;
 
-    // --- Prepare Content Parts (no changes needed here) ---
-    // ... (flagHtml, factsHtml generation) ...
+    // --- Prepare Content Parts ---
+    // ... (flagHtml, factsHtml generation remains the same) ...
     let flagHtml = '';
     if (countryCode) {
         const flagUrl = `https://flagcdn.com/w160/${countryCode.toLowerCase()}.png`;
@@ -1683,7 +1749,7 @@ function showCountryInfoPanel(country) {
         factsHtml = "<div class='country-facts'><p>No specific facts available for this country yet.</p></div>";
     }
 
-    // --- Construct Panel Inner HTML (Ensure handle has ID) ---
+    // --- Construct Panel Inner HTML ---
     infoPanelElement.innerHTML = `
         <div id="info-panel-handle">
              <span>${country.name}</span>
@@ -1698,113 +1764,88 @@ function showCountryInfoPanel(country) {
     // --- Set Initial Styles & Make Visible ---
     infoPanelElement.style.display = 'block';
     infoPanelElement.classList.remove('up');
-    infoPanelElement.style.overflow = 'hidden'; // Keep overflow hidden initially
+    infoPanelElement.style.overflow = 'hidden';
+    infoPanelElement.style.height = ''; // Ensure no initial inline height
 
-    // --- Get Elements ---
-    const handleElement = infoPanelElement.querySelector('#info-panel-handle');
-    const contentElement = infoPanelElement.querySelector('#info-panel-content');
-
-    if (!handleElement || !contentElement) {
-        console.error("Cannot find handle or content element. Panel setup aborted.");
-        return;
-    }
-
-    // --- Attach CLICK Listener with slight delay ---
-    // Use setTimeout to ensure the DOM is fully updated after innerHTML change
+    // --- Attach CLICK Listener (using setTimeout as before) ---
     setTimeout(() => {
-        const freshHandleElement = infoPanelElement.querySelector('#info-panel-handle'); // Re-query inside timeout
+        const freshHandleElement = infoPanelElement.querySelector('#info-panel-handle');
         if (freshHandleElement) {
-            // Remove any previous listener just in case
             freshHandleElement.removeEventListener('click', onPanelToggleClick);
-            // Add the new click listener
             freshHandleElement.addEventListener('click', onPanelToggleClick);
-             console.log("Added toggle click listener to panel handle (after timeout).");
+            console.log("Added toggle click listener to panel handle (after timeout).");
         } else {
             console.error("Could not find #info-panel-handle to attach listener (after timeout).");
         }
-    }, 50); // 50ms delay
+    }, 50);
 
 
-    // --- Set Height & Overflow Based on Viewport Width (Simplified) ---
+    // --- Set Height & Overflow Based on Viewport Width ---
     const isDesktop = window.innerWidth > 768;
 
-    let handleHeight = 60; // Default
-    // Recalculate handle height inside timeout as well, just to be sure
-    setTimeout(() => {
-         const freshHandleElement = infoPanelElement.querySelector('#info-panel-handle');
-         if (freshHandleElement) {
-             const measuredHeight = freshHandleElement.offsetHeight;
-             if (measuredHeight > 0) {
-                 handleHeight = measuredHeight;
-                 console.log(`Measured handle height (after timeout): ${handleHeight}px`);
-                 // Update content height if needed based on measured handle height
-                 if (!isDesktop) {
-                    contentElement.style.height = `calc(100% - ${handleHeight}px)`;
-                 }
-             } else {
-                 console.warn("Measured handle height is 0 (after timeout), using default 60px for calculation.");
-             }
-         }
-    }, 10); // Small delay just after innerHTML
-
-
-    if (isDesktop) {
-        console.log("Setting up panel for Desktop view (scrollable content)...");
-        // Desktop logic remains similar, using requestAnimationFrame for measurement
+    if (!isDesktop) {
+        // <<< Wrap Mobile Setup Logic in requestAnimationFrame >>>
+        console.log("Setting up panel for Mobile view (requesting frame)...");
         requestAnimationFrame(() => {
-            infoPanelElement.style.height = 'auto'; // Keep auto for desktop measurement
+            console.log("rAF: Setting up Mobile view panel content...");
+            const contentElement = infoPanelElement.querySelector('#info-panel-content');
+            if (contentElement) {
+                // Still need to set content height to allow scrolling within the panel
+                const handleHeight = 60; // Assuming default handle height for calc
+                contentElement.style.height = `calc(100% - ${handleHeight}px)`;
+                contentElement.style.overflowY = 'auto';
+                console.log(`rAF Mobile view: Content Height=${contentElement.style.height}, Content Overflow=auto.`);
+            } else {
+                // This error should be much less likely now
+                console.error("rAF Mobile setup: Cannot find content element!");
+            }
+        });
+        // <<< End rAF wrapper >>>
+    } else {
+        // Desktop logic remains the same (already uses rAF for measurements)
+        console.log("Setting up panel for Desktop view (scrollable content)...");
+        requestAnimationFrame(() => {
+            // ... (desktop height calculation logic) ...
+            const contentElement = infoPanelElement.querySelector('#info-panel-content');
+            if (!contentElement) { console.error("Desktop rAF: Content element not found"); return; }
+
+            infoPanelElement.style.height = 'auto'; // Reset for measurement
+            let handleHeight = 0; // Desktop doesn't use handle height for panel size
+
             let contentHeight = contentElement.scrollHeight;
-            let panelRequiredHeight = contentHeight + handleHeight + 30;
-            console.log(`rAF - Measured: Content Scroll=${contentHeight}, Handle Offset=${handleHeight}, Required Panel=${panelRequiredHeight}`);
+            let panelRequiredHeight = contentHeight + 20; // Base on content + padding
 
             const maxHeight = window.innerHeight * 0.85;
             let finalPanelHeight = Math.min(panelRequiredHeight, maxHeight);
 
-            infoPanelElement.style.height = `${finalPanelHeight}px`; // Set calculated height for desktop
+            infoPanelElement.style.height = `${finalPanelHeight}px`;
             infoPanelElement.style.overflow = 'hidden';
 
-            contentElement.style.height = `${finalPanelHeight - handleHeight}px`;
+            contentElement.style.height = `${finalPanelHeight}px`; // Content fills calculated panel height
             contentElement.style.overflowY = 'auto';
 
             console.log(`rAF - Final Desktop: Panel Height=${finalPanelHeight}px, Content Height=${contentElement.style.height}, Content Overflow=auto`);
         });
-
-    } else {
-        // Mobile view: Start collapsed, enable content scrolling, rely on .up class for expansion
-        console.log("Setting up panel for Mobile view (toggle, scrollable content)...");
-        // infoPanelElement.style.height = '60px'; // <<< REMOVE THIS LINE
-
-        // Content height - use default handleHeight initially, might be updated by timeout above
-        contentElement.style.height = `calc(100% - ${handleHeight}px)`;
-        contentElement.style.overflowY = 'auto'; // Always allow content scrolling on mobile
-
-        console.log(`Mobile view: Relying on CSS for initial height (60px) and '.up' class for expansion (50vh). Content Height=${contentElement.style.height}, Content Overflow=auto.`);
     }
-    // --- End Height Logic ---
 }
 
+// --- MODIFY hideCountryInfoPanel ---
 function hideCountryInfoPanel() {
+    if (infoPanelElement) {
     infoPanelElement.style.display = 'none'; // Hide
     infoPanelElement.classList.remove('up'); // Reset state
+        infoPanelElement.style.height = ''; // <<< Ensure inline height is cleared when hidden
 
-    // REMOVED: No longer need to remove window listeners or reset drag state
-    // window.removeEventListener('pointermove', onPanelPointerMove);
-    // window.removeEventListener('pointerup', onPanelPointerUp);
-    // window.removeEventListener('pointercancel', onPanelPointerUp);
-    // isDraggingPanel = false;
-    // document.body.style.cursor = '';
-
-    // Remove the click listener from the handle when hiding
-    const handleElement = infoPanelElement.querySelector('#info-panel-handle');
-    if (handleElement) {
-        handleElement.removeEventListener('click', onPanelToggleClick);
-         console.log("Removed panel toggle click listener.");
-    }
-
+        const handleElement = infoPanelElement.querySelector('#info-panel-handle');
+        if (handleElement) {
+            handleElement.removeEventListener('click', onPanelToggleClick);
+            console.log("Removed panel toggle click listener.");
+        }
     infoPanelElement.innerHTML = ''; // Clear content
+    }
 }
 
-// ... rest of script.js ...
+// ... rest of script ...
 
 // REMOVE the old initGame listener if it exists at the very bottom
 // window.removeEventListener('load', initGame); // Remove if present
@@ -1892,13 +1933,15 @@ function handleShadowToggle(event) {
     if (shadowsEnabled) {
         // --- Shadows ON ---
         if (sunLight) {
-            scene.add(sunLight); // Add directional light back
-            console.log("Shadows ON: Added sunLight.");
+            sunLight.intensity = 0.9; // <<< SET Correct Sun Intensity when re-adding >>>
+            scene.add(sunLight);
+            console.log("Shadows ON: Added sunLight with intensity 0.9.");
         } else {
             console.error("Cannot enable shadows: sunLight not initialized.");
         }
-        // Optional: Lower ambient light intensity
-        if (ambientLight) ambientLight.intensity = 0.6; // e.g., moderate ambient
+        // <<< INCREASE Ambient Intensity when shadows ON >>>
+        if (ambientLight) ambientLight.intensity = 0.9; // Use the same increased value as initMap
+        console.log("Shadows ON: Set ambient intensity to 0.9.");
 
     } else {
         // --- Shadows OFF ---
@@ -1906,9 +1949,12 @@ function handleShadowToggle(event) {
             scene.remove(sunLight); // Remove directional light
             console.log("Shadows OFF: Removed sunLight.");
         }
-        // Optional: Increase ambient light intensity for even illumination
-        if (ambientLight) ambientLight.intensity = 1.2; // e.g., brighter ambient
+        // Keep ambient light brighter when shadows are off
+        if (ambientLight) ambientLight.intensity = 1.2;
+         console.log("Shadows OFF: Set ambient intensity to 1.2.");
     }
+     // Optional: Force render update if needed, though usually not necessary
+     // renderer.render(scene, camera);
 } 
 
 // --- Point-in-Polygon Logic ---

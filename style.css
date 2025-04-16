@@ -426,7 +426,6 @@ body {
 
     /* Style for when the panel is toggled up (expanded) */
     #info-panel.up {
-        height: 50vh; /* Define expanded height (KEEP THIS) */
         overflow: hidden; /* Keep overflow hidden on the panel itself */
     }
 
@@ -567,6 +566,13 @@ body {
          height: auto; /* Let content height be natural */
          overflow-y: visible; /* Content doesn't need its own scrollbar */
     }
+
+    /* Fullscreen Button --- Desktop Positioning Override --- */
+    #fullscreen-button {
+        top: auto;       /* Reset top */
+        bottom: 15px;    /* Set bottom for desktop */
+        right: 15px;     /* Keep right position */
+    }
 }
 
 /* --- Keep Desktop Styles (Overlay Layout) --- */
@@ -649,4 +655,33 @@ body {
      #info-panel-content {
           padding: 0; /* No extra padding needed */
      }
-} 
+}
+
+/* --- Fullscreen Button --- */
+/* Default (Mobile-first) positioning: Top Right */
+#fullscreen-button {
+    position: fixed;
+    top: 25px;       /* Default top */
+    right: 15px;
+    bottom: auto;    /* Default bottom */
+    z-index: 20;
+    /* ... other styles ... */
+    transition: background-color 0.2s ease, top 0.3s ease, bottom 0.3s ease;
+}
+
+/* ... other styles like hover, svg ... */
+
+/* --- Desktop Positioning Override --- */
+@media (min-width: 769px) {
+    /* ... other desktop styles for #info-panel etc ... */
+
+    #fullscreen-button {
+        top: auto;       /* Reset top */
+        bottom: 15px;    /* Set bottom for desktop */
+        /* right: 15px; is inherited, no need to repeat unless changing */
+    }
+
+     /* ... other desktop styles ... */
+}
+
+/* ... rest of css ... */ 
