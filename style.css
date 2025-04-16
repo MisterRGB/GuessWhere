@@ -51,7 +51,7 @@ body {
     color: #fff;
     margin: 0;
     text-align: center;
-    font-size: 4em; /* Doubled the size from 2em */
+    font-size: 2em; /* Doubled the size from 2em */
     font-weight: 400; /* Bungee Spice is typically regular weight */
     font-family: 'Bungee Spice', sans-serif; /* Apply the font */
 }
@@ -317,7 +317,7 @@ body {
     #left-panel h1 {
          width: 100%;
          box-sizing: border-box;
-         font-size: 1em; /* Increased mobile size from 1.4em */
+         font-size: 2em; /* Increased mobile size from 1.4em */
          text-align: center;
          margin-bottom: 5px;
          font-weight: 500; /* Adjust weight if needed for mobile with Bungee Spice */
@@ -424,13 +424,13 @@ body {
         flex-shrink: 0;
     }
 
-    /* Style for when the panel is pulled up (expanded) */
+    /* Style for when the panel is toggled up (expanded) */
     #info-panel.up {
-        height: var(--panel-content-height, 50vh); /* Expand to content height or max */
-        overflow-y: auto; /* Allow scrolling the content */
+        height: 50vh; /* Define expanded height (KEEP THIS) */
+        overflow: hidden; /* Keep overflow hidden on the panel itself */
     }
 
-    /* Handle area for tapping */
+    /* Handle area for TAPPING */
     #info-panel-handle {
         height: 60px; /* Match the initial panel height */
         display: flex;
@@ -438,40 +438,36 @@ body {
         justify-content: center;
         cursor: pointer;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        position: sticky; /* Keep handle visible when scrolling */
+        position: sticky; /* Keep handle visible */
         top: 0;
         background-color: rgba(40, 40, 40, 0.95); /* Match panel bg */
         z-index: 1; /* Above scrollable content */
         padding: 0 15px;
         box-sizing: border-box;
         font-weight: 500;
-        color: #e0e0e0; /* Ensure text is visible */
-        touch-action: none; /* Prevent browser scrolling during drag */
-        user-select: none; /* Prevent text selection during drag */
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        -ms-user-select: none;
+        color: #e0e0e0;
     }
     #info-panel-handle::after { /* Arrow indicator */
         content: '▲';
         margin-left: 10px;
         font-size: 0.8em;
         transition: transform 0.3s ease-in-out;
-        /* Add the bounce animation */
         animation-name: bounceArrow;
-        animation-duration: 1.5s; /* Adjust speed */
+        animation-duration: 1.5s;
         animation-timing-function: ease-in-out;
         animation-iteration-count: infinite;
     }
     #info-panel.up #info-panel-handle::after {
-        transform: rotate(180deg); /* Point down when expanded */
-        animation: none; /* Stop bouncing when expanded */
+        transform: rotate(180deg);
+        animation: none;
     }
 
     /* Wrapper for the actual scrollable info */
     #info-panel-content {
         padding: 15px;
         box-sizing: border-box;
+        height: calc(100% - 60px); /* Calculate height based on fixed handle */
+        overflow-y: auto; /* Ensure content area scrolls */
     }
 
     /* --- Make sure body allows map to fill space above panel --- */
@@ -501,35 +497,76 @@ body {
      #info-panel-content #panel-country-facts p { /* Example */
          /* ... */
     }
+
+    /* --- Fullscreen Button --- */
+    #fullscreen-button {
+        position: fixed; /* Position relative to viewport */
+        top: 25px;       /* ADJUSTED - Try this value first */
+        right: 15px;
+        z-index: 20; /* Ensure it's above other elements */
+        background-color: rgba(50, 50, 50, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 50%; /* Make it circular */
+        width: 40px;
+        height: 40px;
+        padding: 0; /* Remove default padding */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: white;
+        transition: background-color 0.2s ease;
+    }
+
+    #fullscreen-button:hover {
+        background-color: rgba(80, 80, 80, 0.8);
+    }
+
+    #fullscreen-button svg {
+        width: 20px; /* Adjust icon size */
+        height: 20px;
+    }
 }
 
 /* --- Reset for Desktop --- */
 @media (min-width: 769px) {
     #info-panel {
+        /* Reset mobile styles for desktop */
         position: absolute;
         top: 15px;
         right: 15px;
-        bottom: auto;
-        left: auto;
+        bottom: auto; /* Reset bottom */
+        left: auto; /* Reset left */
         width: 280px;
-        height: auto;
+        height: auto; /* Desktop height is auto */
         max-height: calc(100vh - 30px);
+        /* Panel scrolls on desktop */
         overflow-y: auto;
         background-color: rgba(40, 40, 40, 0.85);
-        border-radius: 24px;
+        color: #e0e0e0;
+        border-radius: 24px; /* Restore full border-radius */
         box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
-        padding: 20px;
+        padding: 20px; /* Restore padding */
         z-index: 11;
-        display: none;
-        transition: opacity 0.3s ease-in-out;
+        display: none; /* Initial hide state */
+        transition: opacity 0.3s ease-in-out; /* Restore desktop transition */
+        pointer-events: auto;
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
         border: 1px solid rgba(255, 255, 255, 0.1);
         font-size: 0.9em;
     }
-     #info-panel.up { /* Reset .up state */
-         height: auto;
-     }
-     #info-panel-handle { display: none; } /* Hide handle */
-     #info-panel-content { padding: 0; } /* Reset content padding */
+
+    /* Hide mobile handle on desktop */
+    #info-panel-handle {
+         display: none;
+    }
+    /* Content takes auto height within the scrollable panel */
+    #info-panel-content {
+         padding: 0; /* No extra padding needed for content div */
+         height: auto; /* Let content height be natural */
+         overflow-y: visible; /* Content doesn't need its own scrollbar */
+    }
 }
 
 /* --- Keep Desktop Styles (Overlay Layout) --- */
@@ -606,12 +643,6 @@ body {
         font-size: 0.9em;
         overflow: auto; /* Ensure scrolling works */
     }
-     #info-panel.up { /* Reset .up state styles */
-         height: auto;
-         overflow-y: auto;
-     }
-
-     /* Hide mobile handle on desktop */
      #info-panel-handle {
           display: none;
      }

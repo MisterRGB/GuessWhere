@@ -14,6 +14,7 @@ const panelCountryName = document.getElementById('panel-country-name');
 const panelCountryFacts = document.getElementById('panel-country-facts');
 const cloudToggleCheckbox = document.getElementById('cloud-toggle');
 const shadowToggleCheckbox = document.getElementById('shadow-toggle');
+const fullscreenButton = document.getElementById('fullscreen-button'); // <<< ADD THIS
 
 // --- Game State & Data ---
 let score = 0;
@@ -54,16 +55,19 @@ let sunLight = null; // <-- Declare DirectionalLight globally
 let ambientLight = null; // <-- Declare AmbientLight globally
 let currentLineCurve = null; // To store the curve path for the line/plane
 const clock = new THREE.Clock();
-let scoreSprite = null;     // <<< ADDED: Score Sprite {{ insert }}
-let scoreCanvas = null;       // <<< ADDED: Score Canvas Element {{ insert }}
-let scoreCanvasContext = null;// <<< ADDED: Score Canvas Context {{ insert }}
-let scoreTexture = null;    // <<< ADDED: Score Texture {{ insert }}
+let scoreSprite = null;     // <<< ADDED: Score Sprite
+let scoreCanvas = null;       // <<< ADDED: Score Canvas Element
+let scoreCanvasContext = null;// <<< ADDED: Score Canvas Context
+let scoreTexture = null;    // <<< ADDED: Score Texture
 // Add variables for distance text display
 let distanceCanvas = null;
 let distanceContext = null;
 let distanceTexture = null;
 let distanceTextSprite = null;
 let lensflare = null; // <<< ADDED: Variable for lens flare
+// --- MOVED Shooting Star Variables ---
+let shootingStars = []; // Array to hold shooting star data ({mesh, velocity, active})
+let shootingStarMaterial; // Shared material
 
 // --- Constants ---
 const MARKER_COLOR = 0xff0000; // Red
@@ -100,6 +104,13 @@ const SCORE_SPRITE_SCALE = 1.2; // <<< INCREASED Value (was 0.3) {{ modify }}
 const SCORE_OFFSET_ABOVE_LINE = 0.1; // Base offset from the line tip
 const SCORE_ANIMATION_MAX_HEIGHT = 0.5; // How high the score animates upwards
 const AIRPLANE_SPEED = 4.0;         // <<< ADDED: World units per second
+// --- MOVED Shooting Star Constants ---
+const NUM_SHOOTING_STARS = 15; // How many potential shooting stars in the pool
+const SHOOTING_STAR_SPEED = 150; // Speed of the stars (units per second)
+const SHOOTING_STAR_LENGTH = 2; // Length of the star streak
+const SHOOTING_STAR_SPAWN_RADIUS = STARFIELD_RADIUS * 1.1; // Radius where stars spawn
+const SHOOTING_STAR_DESPAWN_RADIUS_SQ = (STARFIELD_RADIUS * 1.3) ** 2; // Squared radius for despawn check
+const SHOOTING_STAR_SPAWN_CHANCE = 0.003; // Chance per frame to spawn a star
 
 // --- PIN CONSTANTS (Ensure these are here and defined) ---
 const PIN_COLOR_DEFAULT = new THREE.Color(0xff0000);
@@ -251,7 +262,7 @@ function initMap() {
     sunLight.shadow.camera.far = 50;
 
     // --- Force Add Light (Keep unconditional add for now) ---
-    scene.add(sunLight);
+        scene.add(sunLight);
     console.log(">>> DEBUG: Unconditionally added sunLight to scene.");
     sunLight.updateMatrixWorld();
     const worldPos = new THREE.Vector3();
@@ -566,7 +577,7 @@ function animate() {
 
     // --- Shooting Star Logic ---
     // Attempt to spawn a new star
-    if (Math.random() < SHOOTING_STAR_SPAWN_CHANCE) {
+    if (Math.random() < SHOOTING_STAR_SPAWN_CHANCE) { // <<< NO LONGER AN ERROR
         const inactiveStar = shootingStars.find(s => !s.active);
         if (inactiveStar) {
             // Activate and position the star
@@ -1590,96 +1601,57 @@ async function initGame() {
     console.log(">>> initGame: Game initialization sequence complete."); // <<< ADDED LOG
 }
 
-// Start Game
-// window.onload = initGame; // <<< initGame call happens here // <<< Let's make sure this isn't commented out or removed
+// --- Initialize Shooting Stars --- MOVED DEFINITION EARLIER
+function initShootingStars() {
+    console.log("Initializing shooting stars...");
+    shootingStarMaterial = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        linewidth: 1, // Might not be supported on all platforms, but worth trying
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending, // Make them glow bright
+        depthWrite: false, // Keep depthWrite false (don't block things behind stars)
+        depthTest: true // <<< CHANGE: Enable depth testing against the globe
+    });
+
+    // Define the line segment geometry (origin to a point along -Z)
+    const points = [];
+    points.push(new THREE.Vector3(0, 0, 0));
+    points.push(new THREE.Vector3(0, 0, -SHOOTING_STAR_LENGTH)); // Line points backwards along Z
+    const shootingStarGeometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    for (let i = 0; i < NUM_SHOOTING_STARS; i++) {
+        const line = new THREE.Line(shootingStarGeometry, shootingStarMaterial);
+        line.visible = false; // Start hidden
+        line.frustumCulled = false; // Prevent potential culling issues
+        scene.add(line);
+        shootingStars.push({
+            mesh: line,
+            velocity: new THREE.Vector3(),
+            active: false
+        });
+    }
+    console.log(`Created pool of ${NUM_SHOOTING_STARS} shooting stars.`);
+} // --- End Initialize Shooting Stars ---
 
 // --- Add Global Variables for Dragging ---
-let isDraggingPanel = false;
-let panelStartY = 0;
-let panelStartHeight = 0;
-let panelCurrentAnimationFrame = null;
+// ... (rest of the code) ...
 
-// --- Drag Handler Functions ---
-function onPanelPointerDown(event) {
-    // Only handle primary pointer (e.g., first touch)
-    if (!event.isPrimary) return;
-    // Check if the click/touch is directly on the handle
-    if (event.target.closest('#info-panel-handle')) {
-        isDraggingPanel = true;
-        panelStartY = event.clientY; // Use clientY for vertical position
-        panelStartHeight = infoPanelElement.offsetHeight;
-        infoPanelElement.style.transition = 'none'; // Disable transition during drag
-        document.body.style.cursor = 'grabbing'; // Indicate dragging
-
-        // Attach move/up listeners to the window to track pointer anywhere
-        window.addEventListener('pointermove', onPanelPointerMove, { passive: false }); // passive: false needed to prevent scroll potentially
-        window.addEventListener('pointerup', onPanelPointerUp, { once: true }); // Remove after first 'up'
-        window.addEventListener('pointercancel', onPanelPointerUp, { once: true }); // Handle cancellation
-         // console.log("Panel drag started");
+// --- Handler Function for Toggling Panel (Replaces onPanelPointerDown) ---
+function onPanelToggleClick(event) {
+    // Check if the click is directly on the handle
+    const handle = event.target.closest('#info-panel-handle');
+    if (handle) {
+        console.log(">>> onPanelToggleClick: Handle clicked!"); // <<< ADDED LOG
+        infoPanelElement.classList.toggle('up');
+        console.log(`Panel toggled. Has 'up' class: ${infoPanelElement.classList.contains('up')}`);
+        console.log(`Current infoPanelElement height style: ${infoPanelElement.style.height}`); // Log inline style
+    } else {
+        console.log(">>> onPanelToggleClick: Click was not on handle."); // <<< ADDED LOG
     }
 }
 
-function onPanelPointerMove(event) {
-    if (!isDraggingPanel || !event.isPrimary) return;
-
-    // Prevent default scrolling action while dragging panel
-    event.preventDefault();
-
-    const currentY = event.clientY;
-    const deltaY = currentY - panelStartY; // Negative delta means dragging up
-
-    // Calculate new height
-    let newHeight = panelStartHeight - deltaY;
-
-    // Clamp height between min (handle height) and max (viewport * factor)
-    const minHeight = 60; // From CSS initial height
-    const maxHeight = window.innerHeight * 0.7; // Cap at 70% viewport height, adjust as needed
-    newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
-
-    // Throttle updates using requestAnimationFrame
-    cancelAnimationFrame(panelCurrentAnimationFrame); // Cancel previous frame
-    panelCurrentAnimationFrame = requestAnimationFrame(() => {
-        infoPanelElement.style.height = `${newHeight}px`;
-        // Update .up class based on whether it's significantly expanded
-        if (newHeight > minHeight + 20) { // Threshold to add/remove 'up'
-            infoPanelElement.classList.add('up');
-    } else {
-            infoPanelElement.classList.remove('up');
-        }
-    });
-}
-
-function onPanelPointerUp(event) {
-    if (!isDraggingPanel) return; // Only act if we were dragging
-     // console.log("Panel drag ended");
-
-    isDraggingPanel = false;
-    infoPanelElement.style.transition = 'height 0.3s ease-in-out'; // Re-enable transition
-    document.body.style.cursor = ''; // Reset cursor
-
-    // Remove window listeners
-    window.removeEventListener('pointermove', onPanelPointerMove);
-    window.removeEventListener('pointerup', onPanelPointerUp);
-    window.removeEventListener('pointercancel', onPanelPointerUp);
-
-    // Optional: Snap open/closed logic could be added here
-    // For now, just leave it at the dragged height
-    const currentHeight = infoPanelElement.offsetHeight;
-    const minHeight = 60;
-    const maxHeight = window.innerHeight * 0.7;
-    // Example Snap:
-    // if (currentHeight > maxHeight / 2) { // Snap open if more than half way
-    //     infoPanelElement.style.height = `${maxHeight}px`;
-    //     infoPanelElement.classList.add('up');
-    // } else { // Snap closed
-    //     infoPanelElement.style.height = `${minHeight}px`;
-    //     infoPanelElement.classList.remove('up');
-    // }
-}
-
-
 // --- Update show/hide functions ---
-
 function showCountryInfoPanel(country) {
     console.log(">>> showCountryInfoPanel called with country:", country);
     if (!country || !country.name) {
@@ -1689,7 +1661,8 @@ function showCountryInfoPanel(country) {
     const countryName = country.name;
     const countryCode = country.alpha2Code;
 
-    // --- Prepare Content Parts ---
+    // --- Prepare Content Parts (no changes needed here) ---
+    // ... (flagHtml, factsHtml generation) ...
     let flagHtml = '';
     if (countryCode) {
         const flagUrl = `https://flagcdn.com/w160/${countryCode.toLowerCase()}.png`;
@@ -1709,12 +1682,11 @@ function showCountryInfoPanel(country) {
     } else {
         factsHtml = "<div class='country-facts'><p>No specific facts available for this country yet.</p></div>";
     }
-    // --- End Content Parts ---
 
-    // --- Construct Panel Inner HTML ---
+    // --- Construct Panel Inner HTML (Ensure handle has ID) ---
     infoPanelElement.innerHTML = `
         <div id="info-panel-handle">
-             <span>${country.name}</span> <!-- REMOVED ' - Drag Handle' -->
+             <span>${country.name}</span>
         </div>
         <div id="info-panel-content">
              ${flagHtml}
@@ -1723,98 +1695,152 @@ function showCountryInfoPanel(country) {
         </div>
     `;
 
-    // --- Set Initial Height & Overflow Based on Viewport Width ---
-    const isDesktop = window.innerWidth > 768;
-    const handleElement = infoPanelElement.querySelector('#info-panel-handle');
-    const contentElement = infoPanelElement.querySelector('#info-panel-content');
-
-    // Make panel visible before measurements/styling
+    // --- Set Initial Styles & Make Visible ---
     infoPanelElement.style.display = 'block';
     infoPanelElement.classList.remove('up');
-    // Ensure panel itself doesn't scroll initially
-    infoPanelElement.style.overflow = 'hidden';
+    infoPanelElement.style.overflow = 'hidden'; // Keep overflow hidden initially
+
+    // --- Get Elements ---
+    const handleElement = infoPanelElement.querySelector('#info-panel-handle');
+    const contentElement = infoPanelElement.querySelector('#info-panel-content');
 
     if (!handleElement || !contentElement) {
         console.error("Cannot find handle or content element. Panel setup aborted.");
         return;
     }
 
-    // Get handle height (use fallback if measurement fails)
-    let handleHeight = handleElement.offsetHeight;
-    if (!handleHeight || handleHeight <= 0) {
-        console.warn("Measured handle height is 0 or invalid, using fallback 30px");
-        handleHeight = 30; // Fallback handle height
-    }
+    // --- Attach CLICK Listener with slight delay ---
+    // Use setTimeout to ensure the DOM is fully updated after innerHTML change
+    setTimeout(() => {
+        const freshHandleElement = infoPanelElement.querySelector('#info-panel-handle'); // Re-query inside timeout
+        if (freshHandleElement) {
+            // Remove any previous listener just in case
+            freshHandleElement.removeEventListener('click', onPanelToggleClick);
+            // Add the new click listener
+            freshHandleElement.addEventListener('click', onPanelToggleClick);
+             console.log("Added toggle click listener to panel handle (after timeout).");
+        } else {
+            console.error("Could not find #info-panel-handle to attach listener (after timeout).");
+        }
+    }, 50); // 50ms delay
+
+
+    // --- Set Height & Overflow Based on Viewport Width (Simplified) ---
+    const isDesktop = window.innerWidth > 768;
+
+    let handleHeight = 60; // Default
+    // Recalculate handle height inside timeout as well, just to be sure
+    setTimeout(() => {
+         const freshHandleElement = infoPanelElement.querySelector('#info-panel-handle');
+         if (freshHandleElement) {
+             const measuredHeight = freshHandleElement.offsetHeight;
+             if (measuredHeight > 0) {
+                 handleHeight = measuredHeight;
+                 console.log(`Measured handle height (after timeout): ${handleHeight}px`);
+                 // Update content height if needed based on measured handle height
+                 if (!isDesktop) {
+                    contentElement.style.height = `calc(100% - ${handleHeight}px)`;
+                 }
+             } else {
+                 console.warn("Measured handle height is 0 (after timeout), using default 60px for calculation.");
+             }
+         }
+    }, 10); // Small delay just after innerHTML
+
 
     if (isDesktop) {
         console.log("Setting up panel for Desktop view (scrollable content)...");
-        // Defer measurement for reliability
+        // Desktop logic remains similar, using requestAnimationFrame for measurement
         requestAnimationFrame(() => {
-            // Temporarily allow panel to take natural height for measurement
-            infoPanelElement.style.height = 'auto';
+            infoPanelElement.style.height = 'auto'; // Keep auto for desktop measurement
             let contentHeight = contentElement.scrollHeight;
-            let panelRequiredHeight = contentHeight + handleHeight + 30; // Base required height + buffer
+            let panelRequiredHeight = contentHeight + handleHeight + 30;
             console.log(`rAF - Measured: Content Scroll=${contentHeight}, Handle Offset=${handleHeight}, Required Panel=${panelRequiredHeight}`);
 
-            const maxHeight = window.innerHeight * 0.85; // Max panel height
+            const maxHeight = window.innerHeight * 0.85;
             let finalPanelHeight = Math.min(panelRequiredHeight, maxHeight);
 
-            // Apply final styles
-            infoPanelElement.style.height = `${finalPanelHeight}px`;
-            infoPanelElement.style.overflow = 'hidden'; // Panel does not scroll
+            infoPanelElement.style.height = `${finalPanelHeight}px`; // Set calculated height for desktop
+            infoPanelElement.style.overflow = 'hidden';
 
-            // Set content height to fill the panel (minus handle) and enable scrolling
             contentElement.style.height = `${finalPanelHeight - handleHeight}px`;
-            contentElement.style.overflowY = 'auto'; // Always allow content scrolling on desktop
+            contentElement.style.overflowY = 'auto';
 
             console.log(`rAF - Final Desktop: Panel Height=${finalPanelHeight}px, Content Height=${contentElement.style.height}, Content Overflow=auto`);
         });
 
     } else {
-        // Mobile view: Start collapsed, enable content scrolling
-        console.log("Setting up panel for Mobile view (scrollable content)...");
-        infoPanelElement.style.height = '60px'; // Panel starts small
+        // Mobile view: Start collapsed, enable content scrolling, rely on .up class for expansion
+        console.log("Setting up panel for Mobile view (toggle, scrollable content)...");
+        // infoPanelElement.style.height = '60px'; // <<< REMOVE THIS LINE
 
-        // Set content height to fill panel (minus handle) and enable scrolling
+        // Content height - use default handleHeight initially, might be updated by timeout above
         contentElement.style.height = `calc(100% - ${handleHeight}px)`;
         contentElement.style.overflowY = 'auto'; // Always allow content scrolling on mobile
 
-        console.log(`Mobile view: Panel Height=60px, Content Height=${contentElement.style.height}, Content Overflow=auto`);
+        console.log(`Mobile view: Relying on CSS for initial height (60px) and '.up' class for expansion (50vh). Content Height=${contentElement.style.height}, Content Overflow=auto.`);
     }
     // --- End Height Logic ---
-
-    // Attach listener
-    infoPanelElement.removeEventListener('pointerdown', onPanelPointerDown);
-    infoPanelElement.addEventListener('pointerdown', onPanelPointerDown);
 }
 
 function hideCountryInfoPanel() {
     infoPanelElement.style.display = 'none'; // Hide
     infoPanelElement.classList.remove('up'); // Reset state
 
-    // Remove listener when panel is hidden
-    infoPanelElement.removeEventListener('pointerdown', onPanelPointerDown);
-     // console.log("Removed panel pointerdown listener");
+    // REMOVED: No longer need to remove window listeners or reset drag state
+    // window.removeEventListener('pointermove', onPanelPointerMove);
+    // window.removeEventListener('pointerup', onPanelPointerUp);
+    // window.removeEventListener('pointercancel', onPanelPointerUp);
+    // isDraggingPanel = false;
+    // document.body.style.cursor = '';
 
-    // Just in case drag was interrupted, remove window listeners too
-    if (isDraggingPanel) {
-         window.removeEventListener('pointermove', onPanelPointerMove);
-         window.removeEventListener('pointerup', onPanelPointerUp);
-         window.removeEventListener('pointercancel', onPanelPointerUp);
-         isDraggingPanel = false;
-         document.body.style.cursor = '';
+    // Remove the click listener from the handle when hiding
+    const handleElement = infoPanelElement.querySelector('#info-panel-handle');
+    if (handleElement) {
+        handleElement.removeEventListener('click', onPanelToggleClick);
+         console.log("Removed panel toggle click listener.");
     }
 
     infoPanelElement.innerHTML = ''; // Clear content
 }
 
-// --- Add Event Listener for Toggle ---
-function setupEventListeners() {
-    if (guessButton) guessButton.addEventListener('click', handleGuessConfirm);
-    if (nextButton) nextButton.addEventListener('click', startNewRound);
+// ... rest of script.js ...
 
-    if (cloudToggleCheckbox) cloudToggleCheckbox.addEventListener('change', handleCloudToggle);
-    if (shadowToggleCheckbox) shadowToggleCheckbox.addEventListener('change', handleShadowToggle);
+// REMOVE the old initGame listener if it exists at the very bottom
+// window.removeEventListener('load', initGame); // Remove if present
+// ADD the listener reliably
+window.addEventListener('load', initGame);
+
+// --- Add Event Listener Setup --- MOVED DEFINITION EARLIER
+function setupEventListeners() {
+    console.log("Setting up event listeners..."); // <<< Added log
+    if (guessButton) {
+         guessButton.addEventListener('click', handleGuessConfirm);
+         console.log("Added listener to guessButton.");
+    } else {
+         console.warn("guessButton not found, cannot add listener.");
+    }
+
+    if (nextButton) {
+         nextButton.addEventListener('click', startNewRound);
+         console.log("Added listener to nextButton.");
+    } else {
+         console.warn("nextButton not found, cannot add listener.");
+    }
+
+    if (cloudToggleCheckbox) {
+         cloudToggleCheckbox.addEventListener('change', handleCloudToggle);
+         console.log("Added listener to cloudToggleCheckbox.");
+    } else {
+         console.warn("cloudToggleCheckbox not found, cannot add listener.");
+    }
+
+    if (shadowToggleCheckbox) {
+         shadowToggleCheckbox.addEventListener('change', handleShadowToggle);
+         console.log("Added listener to shadowToggleCheckbox.");
+    } else {
+         console.warn("shadowToggleCheckbox not found, cannot add listener.");
+    }
 
     // Pointer/Map interaction listeners
     if (mapContainer) {
@@ -1822,14 +1848,33 @@ function setupEventListeners() {
         mapContainer.addEventListener('pointermove', onPointerMove, false);
         mapContainer.addEventListener('pointerup', onPointerUp, false);
         mapContainer.addEventListener('pointerleave', onPointerUp, false);
+        console.log("Added map interaction listeners to mapContainer.");
     } else {
         console.error("setupEventListeners: mapContainer not found, cannot add map interaction listeners.");
     }
 
     window.addEventListener('resize', onWindowResize);
+    console.log("Added listener for window resize.");
+    console.log("Event listeners setup complete."); // <<< Added log
+
+    // <<< ADD fullscreen button listener >>>
+    if (fullscreenButton) {
+        fullscreenButton.addEventListener('click', toggleFullScreen);
+        console.log("Added listener to fullscreenButton.");
+    } else {
+        console.warn("fullscreenButton not found, cannot add listener.");
+    }
+    // <<< END ADD >>>
 }
 
-// --- Handler function for the toggle ---
+// ... (Point-in-Polygon Logic) ...
+function isPointInCountry(pointCoords, countryGeometry) {
+    // ... function body ...
+    return false;
+}
+// --- End Point-in-Polygon Logic ---
+
+// --- MOVED Handler function for the cloud toggle ---
 function handleCloudToggle(event) {
     if (cloudMesh) { // Check if cloud mesh exists
         cloudMesh.visible = event.target.checked; // Set visibility based on checkbox state
@@ -1839,7 +1884,7 @@ function handleCloudToggle(event) {
     }
 }
 
-// --- Handler function for the shadow toggle ---
+// --- MOVED Handler function for the shadow toggle ---
 function handleShadowToggle(event) {
     const shadowsEnabled = event.target.checked;
     renderer.shadowMap.enabled = shadowsEnabled; // Toggle renderer shadows
@@ -1866,41 +1911,10 @@ function handleShadowToggle(event) {
     }
 } 
 
-// --- Point-in-Polygon Logic --- // *** KEEP DEFINITIONS HERE (Before HandleGuessConfirm) ***
-function pointInPolygon(point, polygon) {
-    const x = point[0]; // lon
-    const y = point[1]; // lat
-    let isInside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i][0], yi = polygon[i][1];
-        const xj = polygon[j][0], yj = polygon[j][1];
-        const intersect = ((yi > y) !== (yj > y))
-            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) isInside = !isInside;
-    }
-    return isInside;
-}
-function isPointInCountry(pointCoords, countryGeometry) {
-    if (!pointCoords || !countryGeometry) return false;
-    const point = [pointCoords.lon, pointCoords.lat];
-    const type = countryGeometry.type;
-    const coordinates = countryGeometry.coordinates;
-    if (type === 'Polygon') {
-        const outerRing = coordinates[0];
-        if (pointInPolygon(point, outerRing)) return true;
-    } else if (type === 'MultiPolygon') {
-        for (const polygon of coordinates) {
-            const outerRing = polygon[0];
-            if (pointInPolygon(point, outerRing)) return true;
-        }
-    }
-    return false;
-}
-// --- End Point-in-Polygon Logic ---
+// --- Point-in-Polygon Logic ---
+// ... function definitions ...
 
-const TARGET_RING_MAX_RADIUS = EARTH_RADIUS * 0.15;
-
-// --- NEW FUNCTION: Initialize Score Display --- {{ insert }}
+// --- MOVED: Initialize Score Display ---
 function initScoreDisplay() {
     console.log("Initializing score display elements...");
     scoreCanvas = document.getElementById('score-canvas');
@@ -1937,9 +1951,8 @@ function initScoreDisplay() {
     scene.add(scoreSprite);
     console.log("Score display initialized.");
 }
-// --- END NEW FUNCTION ---
 
-// --- NEW FUNCTION: Initialize Distance Text Display --- // <<< PASTE THE FUNCTION DEFINITION HERE
+// --- MOVED: Initialize Distance Text Display ---
 function initDistanceDisplay() {
     console.log("Initializing distance text display elements...");
     // Create canvas dynamically
@@ -1977,63 +1990,55 @@ function initDistanceDisplay() {
     scene.add(distanceTextSprite);
     console.log("Distance text display initialized.");
 }
-// --- END DISTANCE FUNCTION ---
 
-// ... Constants ...
-const NUM_SHOOTING_STARS = 15; // How many potential shooting stars in the pool
-const SHOOTING_STAR_SPEED = 150; // Speed of the stars (units per second)
-const SHOOTING_STAR_LENGTH = 2; // Length of the star streak
-const SHOOTING_STAR_SPAWN_RADIUS = STARFIELD_RADIUS * 1.1; // Radius where stars spawn
-const SHOOTING_STAR_DESPAWN_RADIUS_SQ = (STARFIELD_RADIUS * 1.3) ** 2; // Squared radius for despawn check
-const SHOOTING_STAR_SPAWN_CHANCE = 0.003; // Chance per frame to spawn a star
+// --- Fullscreen Toggle Function ---
+function toggleFullScreen() {
+    if (!document.fullscreenElement &&    // Standard syntax
+        !document.mozFullScreenElement && // Firefox
+        !document.webkitFullscreenElement && // Chrome, Safari and Opera
+        !document.msFullscreenElement) {  // IE/Edge
 
-// ... Three.js Variables ...
-let shootingStars = []; // Array to hold shooting star data ({mesh, velocity, active})
-let shootingStarMaterial; // Shared material
+        console.log("Entering fullscreen...");
+        const element = document.documentElement; // Fullscreen the whole page
+        if (element.requestFullscreen) {
+            element.requestFullscreen();
+        } else if (element.mozRequestFullScreen) { // Firefox
+            element.mozRequestFullScreen();
+        } else if (element.webkitRequestFullscreen) { // Chrome, Safari and Opera
+            element.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+        } else if (element.msRequestFullscreen) { // IE/Edge
+            element.msRequestFullscreen();
+        }
+        // Optional: Change button icon to 'collapse'
+        if (fullscreenButton) {
+            fullscreenButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                    <path d="M10 19H5v-5h2v3h3v2zm-5-7H3V7h7v2H5v3zm11 7h-5v-2h3v-3h2v5zm-2-9V5h-3V3h5v7h-2V8z"/>
+                </svg>
+            `;
+            fullscreenButton.title = "Exit Fullscreen";
+        }
 
-// --- Initialize Shooting Stars ---
-function initShootingStars() {
-    console.log("Initializing shooting stars...");
-    shootingStarMaterial = new THREE.LineBasicMaterial({
-        color: 0xffffff,
-        linewidth: 1, // Might not be supported on all platforms, but worth trying
-        transparent: true,
-        opacity: 0.7,
-        blending: THREE.AdditiveBlending, // Make them glow bright
-        depthWrite: false, // Keep depthWrite false (don't block things behind stars)
-        depthTest: true // <<< CHANGE: Enable depth testing against the globe
-    });
-
-    // Define the line segment geometry (origin to a point along -Z)
-    const points = [];
-    points.push(new THREE.Vector3(0, 0, 0));
-    points.push(new THREE.Vector3(0, 0, -SHOOTING_STAR_LENGTH)); // Line points backwards along Z
-    const shootingStarGeometry = new THREE.BufferGeometry().setFromPoints(points);
-
-    for (let i = 0; i < NUM_SHOOTING_STARS; i++) {
-        const line = new THREE.Line(shootingStarGeometry, shootingStarMaterial);
-        line.visible = false; // Start hidden
-        line.frustumCulled = false; // Prevent potential culling issues
-        scene.add(line);
-        shootingStars.push({
-            mesh: line,
-            velocity: new THREE.Vector3(),
-            active: false
-        });
+    } else { // Currently fullscreen, exit
+        console.log("Exiting fullscreen...");
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.mozCancelFullScreen) { // Firefox
+            document.mozCancelFullScreen();
+        } else if (document.webkitExitFullscreen) { // Chrome, Safari and Opera
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) { // IE/Edge
+            document.msExitFullscreen();
+        }
+         // Optional: Change button icon back to 'expand'
+         if (fullscreenButton) {
+             fullscreenButton.innerHTML = `
+                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                     <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-5v-2h3v-3h2v5zm-2-9V5h-3V3h5v7h-2V8z"/>
+                 </svg>
+             `;
+             fullscreenButton.title = "Enter Fullscreen";
+        }
     }
-    console.log(`Created pool of ${NUM_SHOOTING_STARS} shooting stars.`);
-} // --- End Initialize Shooting Stars ---
-
-console.log(">>> script.js: Reached end of script, checking initGame type before assigning listener...");
-console.log(">>> Type of initGame just before listener assignment:", typeof initGame);
-if (typeof initGame !== 'function') {
-    console.error(">>> CRITICAL: initGame is NOT a function at the time of listener assignment!");
 }
-
-window.addEventListener('load', initGame); // <<< RESTORE this line
-// window.addEventListener('load', function() { // <<< REMOVE the temporary test
-//     console.log(">>> Load event fired successfully! (Basic test)");
-// });
-
-// --- Add Global Variables for Dragging ---
-// ... (rest of the code) ...
+// --- End Fullscreen Toggle Function ---
