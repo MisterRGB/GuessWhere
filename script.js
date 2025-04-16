@@ -712,6 +712,16 @@ function animate() {
                       console.error("Error occurred *during* showCountryInfoPanel call:", error);
                  }
             }
+
+            // --- Enable Next Button ---
+            if (nextButton) {
+                nextButton.disabled = false;
+                nextButton.style.display = 'block';
+                console.log(`animate (end): nextButton.disabled set to ${nextButton.disabled}`); // <<< ADD LOG
+            } else {
+                 console.warn("animate (end): nextButton not found to enable.");
+            }
+            // -------------------------
         } // <<< Closing brace for 'if (progress >= 1.0)' block
     } // <<< MOVED Closing brace for 'if (isLineAnimating)' block here
 
@@ -970,7 +980,6 @@ async function startNewRound() {
 
     countryNameElement.textContent = currentCountry.name;
     distanceElement.textContent = 'N/A';
-    guessButton.disabled = true; // Button starts disabled until pin placed
 
     // Check if geometry exists directly on the loaded data
     if (!currentCountry.geometry || (currentCountry.geometry.type !== 'Polygon' && currentCountry.geometry.type !== 'MultiPolygon')) {
@@ -991,6 +1000,22 @@ async function startNewRound() {
     if (nextButton) nextButton.style.display = 'block';
 
     hideCountryInfoPanel(); // This should already be called
+
+    // --- Force Disable Buttons and Log ---
+    if (guessButton) {
+        guessButton.disabled = true;
+        console.log(`startNewRound: guessButton.disabled set to ${guessButton.disabled}`); // <<< ADD LOG
+    } else {
+        console.warn("startNewRound: guessButton not found.");
+    }
+    if (nextButton) {
+        nextButton.disabled = true;
+        nextButton.style.display = 'block'; // Ensure visible but disabled
+        console.log(`startNewRound: nextButton.disabled set to ${nextButton.disabled}`); // <<< ADD LOG
+    } else {
+        console.warn("startNewRound: nextButton not found.");
+    }
+    // -------------------------------------
 } // <<< ADDED Closing brace for startNewRound function
 
 function handleMapClick(event) {
@@ -1148,8 +1173,18 @@ async function handleGuessConfirm() {
          console.warn("Cannot confirm guess. Pin not placed or country not loaded.");
          return;
     }
-    guessButton.disabled = true;
-    nextButton.style.display = 'none';
+    if (guessButton) {
+        guessButton.disabled = true;
+         console.log(`handleGuessConfirm: guessButton.disabled set to ${guessButton.disabled}`); // <<< ADD LOG
+    }
+    if (nextButton) {
+        nextButton.style.display = 'none'; // Keep hiding next button during animation
+        // It should already be disabled, but let's be sure
+        if (nextButton.disabled !== true) {
+            console.warn("handleGuessConfirm: Forcing nextButton back to disabled.");
+            nextButton.disabled = true;
+        }
+    }
     isGuessLocked = true;
     console.log("Confirming guess...");
     console.log("Current country geometry before scoring/highlighting:", currentCountry.geometry);
@@ -1366,8 +1401,17 @@ function createOrUpdatePin(position3D) {
     }
     // Update player guess coordinates
     playerGuess = getLatLonFromPoint(position3D);
-    if (!isGuessLocked) { // Only enable button if guess isn't locked
-         guessButton.disabled = false;
+    // --- Enable GUESS button ONLY ---
+    if (!isGuessLocked) {
+         if (guessButton) {
+            guessButton.disabled = false;
+             console.log(`createOrUpdatePin: guessButton.disabled set to ${guessButton.disabled}`); // <<< ADD LOG
+         }
+         // Ensure nextButton remains disabled
+         if (nextButton && nextButton.disabled !== true) {
+             console.warn("createOrUpdatePin: Forcing nextButton back to disabled.");
+             nextButton.disabled = true;
+         }
     }
 }
 
