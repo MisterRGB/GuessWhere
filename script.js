@@ -1,3 +1,5 @@
+console.log(">>> script.js: File loaded, starting execution..."); // <<< ADDED VERY TOP LOG
+
 const EARTH_RADIUS = 5;
 
 // --- DOM Elements ---
@@ -107,6 +109,9 @@ const LINE_AND_TARGET_COLOR = 0xffff00; // Yellow
 
 // --- GraphQL API Interaction ---
 const GRAPHQL_ENDPOINT = 'https://countries-274616.ew.r.appspot.com'; // From graphcountries README
+
+// --- Alpha-3 to Alpha-2 Code Mapping --- <<< MOVED TO GLOBAL SCOPE
+const alpha3ToAlpha2 = { AFG: 'AF', ALB: 'AL', DZA: 'DZ', ASM: 'AS', AND: 'AD', AGO: 'AO', AIA: 'AI', ATA: 'AQ', ATG: 'AG', ARG: 'AR', ARM: 'AM', ABW: 'AW', AUS: 'AU', AUT: 'AT', AZE: 'AZ', BHS: 'BS', BHR: 'BH', BGD: 'BD', BRB: 'BB', BLR: 'BY', BEL: 'BE', BLZ: 'BZ', BEN: 'BJ', BMU: 'BM', BTN: 'BT', BOL: 'BO', BES: 'BQ', BIH: 'BA', BWA: 'BW', BVT: 'BV', BRA: 'BR', IOT: 'IO', BRN: 'BN', BGR: 'BG', BFA: 'BF', BDI: 'BI', CPV: 'CV', KHM: 'KH', CMR: 'CM', CAN: 'CA', CYM: 'KY', CAF: 'CF', TCD: 'TD', CHL: 'CL', CHN: 'CN', CXR: 'CX', CCK: 'CC', COL: 'CO', COM: 'KM', COD: 'CD', COG: 'CG', COK: 'CK', CRI: 'CR', CIV: "CI", HRV: 'HR', CUB: 'CU', CUW: 'CW', CYP: 'CY', CZE: 'CZ', DNK: 'DK', DJI: 'DJ', DMA: 'DM', DOM: 'DO', ECU: 'EC', EGY: 'EG', SLV: 'SV', GNQ: 'GQ', ERI: 'ER', EST: 'EE', SWZ: 'SZ', ETH: 'ET', FLK: 'FK', FRO: 'FO', FJI: 'FJ', FIN: 'FI', FRA: 'FR', GUF: 'GF', PYF: 'PF', ATF: 'TF', GAB: 'GA', GMB: 'GM', GEO: 'GE', DEU: 'DE', GHA: 'GH', GIB: 'GI', GRC: 'GR', GRL: 'GL', GRD: 'GD', GLP: 'GP', GUM: 'GU', GTM: 'GT', GGY: 'GG', GIN: 'GN', GNB: 'GW', GUY: 'GY', HTI: 'HT', HMD: 'HM', VAT: 'VA', HND: 'HN', HKG: 'HK', HUN: 'HU', ISL: 'IS', IND: 'IN', IDN: 'ID', IRN: 'IR', IRQ: 'IQ', IRL: 'IE', IMN: 'IM', ISR: 'IL', ITA: 'IT', JAM: 'JM', JPN: 'JP', JEY: 'JE', JOR: 'JO', KAZ: 'KZ', KEN: 'KE', KIR: 'KI', PRK: 'KP', KOR: 'KR', KWT: 'KW', KGZ: 'KG', LAO: 'LA', LVA: 'LV', LBN: 'LB', LSO: 'LS', LBR: 'LR', LBY: 'LY', LIE: 'LI', LTU: 'LT', LUX: 'LU', MAC: 'MO', MKD: 'MK', MDG: 'MG', MWI: 'MW', MYS: 'MY', MDV: 'MV', MLI: 'ML', MLT: 'MT', MHL: 'MH', MTQ: 'MQ', MRT: 'MR', MUS: 'MU', MYT: 'YT', MEX: 'MX', FSM: 'FM', MDA: 'MD', MCO: 'MC', MNG: 'MN', MNE: 'ME', MSR: 'MS', MAR: 'MA', MOZ: 'MZ', MMR: 'MM', NAM: 'NA', NRU: 'NR', NPL: 'NP', NLD: 'NL', NCL: 'NC', NZL: 'NZ', NIC: 'NI', NER: 'NE', NGA: 'NG', NIU: 'NU', NFK: 'NF', MNP: 'MP', NOR: 'NO', OMN: 'OM', PAK: 'PK', PLW: 'PW', PSE: 'PS', PAN: 'PA', PNG: 'PG', PRY: 'PY', PER: 'PE', PHL: 'PH', PCN: 'PN', POL: 'PL', PRT: 'PT', PRI: 'PR', QAT: 'QA', REU: 'RE', ROU: 'RO', RUS: 'RU', RWA: 'RW', BLM: 'BL', SHN: 'SH', KNA: 'KN', LCA: 'LC', MAF: 'MF', SPM: 'PM', VCT: 'VC', WSM: 'WS', SMR: 'SM', STP: 'ST', SAU: 'SA', SEN: 'SN', SRB: 'RS', SYC: 'SC', SLE: 'SL', SGP: 'SG', SXM: 'SX', SVK: 'SK', SVN: 'SI', SLB: 'SB', SOM: 'SO', ZAF: 'ZA', SGS: 'GS', SSD: 'SS', ESP: 'ES', LKA: 'LK', SDN: 'SD', SUR: 'SR', SJM: 'SJ', SWE: 'SE', CHE: 'CH', SYR: 'SY', TWN: 'TW', TJK: 'TJ', TZA: 'TZ', THA: 'TH', TLS: 'TL', TGO: 'TG', TKL: 'TK', TON: 'TO', TTO: 'TT', TUN: 'TN', TUR: 'TR', TKM: 'TM', TCA: 'TC', TUV: 'TV', UGA: 'UG', UKR: 'UA', ARE: 'AE', GBR: 'GB', USA: 'US', UMI: 'UM', URY: 'UY', UZB: 'UZ', VUT: 'VU', VEN: 'VE', VNM: 'VN', VGB: 'VG', VIR: 'VI', WLF: 'WF', ESH: 'EH', YEM: 'YE', ZMB: 'ZM', ZWE: 'ZW', ALA: 'AX' };
 
 // --- NEW Helper Function for Pin Scale ---
 function getPinScale() {
@@ -549,12 +554,12 @@ function animate() {
         const progress = Math.min(lineElapsedTime / currentAnimationDuration, 1.0);
 
         if (currentDistanceLine) {
-        const pointsToDraw = Math.ceil(lineTotalPoints * progress);
-        const verticesToDraw = Math.max(0, pointsToDraw);
-        currentDistanceLine.geometry.setDrawRange(0, verticesToDraw);
+            const pointsToDraw = Math.ceil(lineTotalPoints * progress);
+            const verticesToDraw = Math.max(0, pointsToDraw);
+            currentDistanceLine.geometry.setDrawRange(0, verticesToDraw);
         }
 
-        // --- Score Sprite Animation --- {{ modify }}
+        // --- Score Sprite Animation ---
         if (scoreSprite && currentLineCurve) {
             if (progress < 1.0) { // Only animate while line is moving
                 const currentCurvePos = currentLineCurve.getPointAt(progress);
@@ -564,15 +569,12 @@ function animate() {
                 const scoreSpritePosition = currentCurvePos.clone()
                     .addScaledVector(surfaceNormal, SCORE_OFFSET_ABOVE_LINE + upOffset);
 
-                // --- Animate Score Value --- {{ insert }}
-                const targetScore = progress * currentRoundScore; // Target score based on progress
-                // Lerp the displayed value towards the target score
-                animatedScoreDisplayValue = THREE.MathUtils.lerp(animatedScoreDisplayValue, targetScore, 0.08); // Adjust lerp factor (0.08) for speed
-                // --- End Animate Score Value ---
+                // Animate Score Value
+                const targetScore = progress * currentRoundScore;
+                animatedScoreDisplayValue = THREE.MathUtils.lerp(animatedScoreDisplayValue, targetScore, 0.08);
 
-                // Update Canvas Text with the animated value
+                // Update Canvas Text
                 scoreCanvasContext.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
-                // Display the rounded, animated score
                 scoreCanvasContext.fillText(`+${Math.round(animatedScoreDisplayValue)}`, scoreCanvas.width / 2, scoreCanvas.height / 2);
                 scoreTexture.needsUpdate = true;
 
@@ -587,18 +589,18 @@ function animate() {
                      scoreTexture.needsUpdate = true;
                      // Keep position from last frame
                  }
-                 // Hide slightly after finishing (handled below)
+                 // Hide slightly after finishing (handled in progress >= 1.0 check)
             }
         }
         // --- End Score Sprite Animation ---
 
+        // --- Animation End Handling (MOVED INSIDE isLineAnimating block) ---
         if (progress >= 1.0) {
             isLineAnimating = false; // Stop line animation flag
 
             // Hide score sprite shortly after animation ends
             if (scoreSprite) setTimeout(() => { scoreSprite.visible = false; }, 100); // Hide after 100ms delay
 
-            // --- Animation End Handling ---
             console.log("Line animation finished.");
             if (isCameraFollowing) {
                 isCameraFollowing = false; // Stop glide
@@ -619,195 +621,87 @@ function animate() {
             controls.target.copy(targetCountryCenterVector);
             controls.update();
             console.log("Controls enabled, target set to destination.");
-            // --- End Animation End Handling ---
 
             createTargetRings();
-            showCountryInfoPanel(currentCountry);
-        }
-    } else {
-         // If line is not animating, ensure score is hidden
-         if (scoreSprite && scoreSprite.visible) {
-             scoreSprite.visible = false;
-    }
-    }
 
-    if (targetRings.length > 0) {
-        const elapsedTime = targetRingClock.getElapsedTime();
+            // --- Debugging showCountryInfoPanel call ---
+            console.log("Attempting to call showCountryInfoPanel...");
+            console.log("Is currentCountry valid before call?", currentCountry);
+            if (currentCountry) {
+                 try {
+                     showCountryInfoPanel(currentCountry);
+                     console.log("Successfully finished calling showCountryInfoPanel.");
+                 } catch (error) {
+                      console.error("Error occurred *during* showCountryInfoPanel call:", error);
+                 }
+            }
+        } // <<< Closing brace for 'if (progress >= 1.0)' block
+    } // <<< MOVED Closing brace for 'if (isLineAnimating)' block here
 
-        targetRings.forEach((ring, index) => {
-            const timeOffset = (index / NUM_TARGET_RINGS) * PULSE_DURATION;
-            const cycleTime = (elapsedTime + timeOffset) % PULSE_DURATION;
-            const progress = cycleTime / PULSE_DURATION;
-
-            const scale = progress;
-            ring.scale.set(scale, scale, scale);
-
-            // --- Use a linear fade-out ---
-            const opacity = 1.0 - progress; // <<< Changed to linear fade
-            ring.material.opacity = opacity;
-
-             ring.visible = ring.material.opacity > 0.01;
-        });
-    }
-
+    // The animate function loop continues here, rendering the scene
     renderer.render(scene, camera);
-}
 
-// --- Coordinate Conversion ---
+} // <<< Closing brace for animate() function
 
-// --- NEW Function derived as INVERSE of the reverted getPointFromLatLon ---
-function getLatLonFromPoint(point) {
-    // Normalize first to remove offset effect
-    const normalizedPoint = point.clone().normalize();
-    // Use radius 1 for calculations on the normalized point
-    const R = 1.0;
-
-    const x = normalizedPoint.x;
-    const y = normalizedPoint.y;
-    const z = normalizedPoint.z;
-
-    // --- Latitude calculation ---
-    // From y = R * sin(phi)
-    let phi = Math.asin(y / R); // Result is in radians (-PI/2 to PI/2)
-    // Handle potential floating point inaccuracies at poles
-    if (isNaN(phi)) {
-       phi = y > 0 ? Math.PI / 2 : -Math.PI / 2;
-    }
-    const latitude = (phi * 180) / Math.PI;
-
-    // --- Longitude calculation ---
-    // We need theta_adj = atan2(sin_component, cos_component)
-    // From z = R * cos(phi) * sin(theta_adj) => sin(theta_adj) = z / (R * cos(phi))
-    // From x = -R * cos(phi) * cos(theta_adj) => cos(theta_adj) = -x / (R * cos(phi))
-    // So, theta_adj = atan2( z / (R * cos(phi)), -x / (R * cos(phi)) )
-    // Simplified: theta_adj = atan2(z, -x)
-    // But avoid division by zero if cos(phi) is near zero (at poles)
-    let longitude;
-    if (Math.abs(latitude) > 89.99) { // At or very near a pole
-        longitude = 0; // Longitude is irrelevant at the poles, assign 0
-    } else {
-        const theta_adj = Math.atan2(z, -x); // Result is in radians (-PI to PI)
-        // Now convert theta_adj back to longitude using lon = (theta_adj * 180 / PI) + 180
-        const longitude_deg_from_adj = (theta_adj * 180) / Math.PI;
-        longitude = longitude_deg_from_adj + 180; // Result likely in 0 to 360 range
-
-        // Optional: Normalize to -180 to 180 if preferred
-        if (longitude > 180) {
-             longitude -= 360;
-        }
-    }
-
-    return { lat: latitude, lon: longitude };
-}
-
-// --- REVERTED Function (Keep this one as is) ---
-function getPointFromLatLon(lat, lon) {
-    const phi = lat * (Math.PI / 180);
-    const theta = (lon - 180) * (Math.PI / 180);
-
-    const x = -(EARTH_RADIUS * Math.cos(phi) * Math.cos(theta));
-    const y = EARTH_RADIUS * Math.sin(phi);
-    const z = EARTH_RADIUS * Math.cos(phi) * Math.sin(theta);
-
-    return new THREE.Vector3(x, y, z);
-}
-
-function deg2rad(deg) {
-    return deg * (Math.PI / 180);
-}
-
-// --- Country Data ---
+// --- Function to load country boundary data ---
+// This function should now be able to access the global alpha3ToAlpha2 map
 async function loadCountryData() {
-    console.log("Loading country data and shapes from GeoJSON...");
+    console.log("Loading country shapes data from GeoJSON...");
     try {
-        const response = await fetch('assets/countries_shapes.geojson');
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const response = await fetch('assets/countries.geojson');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const geojsonData = await response.json();
 
-        // --- Log properties of the first feature for debugging property names ---
-        if (geojsonData.features && geojsonData.features.length > 0) {
-            console.log("Properties of the first feature:", geojsonData.features[0].properties);
+        if (!geojsonData || !geojsonData.features || geojsonData.features.length === 0) {
+             throw new Error("GeoJSON data is invalid or empty.");
         }
-        // --- End log ---
 
+        // Process features: Combine properties and geometry, ADD alpha2Code
+        let firstFeatureLogged = false;
         countriesData = geojsonData.features.map(feature => {
-            const properties = feature.properties;
-            const geometry = feature.geometry;
-            const name = properties.COUNTRY || properties.name || properties.ADMIN || properties.NAME_EN || properties.NAME || properties.NAME_LONG;
+             if (!feature.properties || !feature.geometry || !feature.id) {
+                 console.warn("Skipping feature with missing properties, geometry, or id:", feature);
+                 return null;
+             }
 
-            // --- Determine and Validate Alpha2Code ---
-            const alpha2Code = properties.ISO ||
-                               properties.ISO_A2 ||
-                               properties.iso_a2 ||
-                               properties.alpha2Code ||
-                               properties.ISO_A2_EH ||
-                               properties["ISO3166-1-Alpha-2"];
+             // <<< ADD alpha2Code based on mapping the feature's ID >>>
+             const alpha3 = feature.id.toUpperCase();
+             const alpha2 = alpha3ToAlpha2[alpha3]; // <<< Accessing global map
 
-            // Validate the code strictly: must be a 2-character string, not '-99' etc.
-            const validAlpha2Code = (alpha2Code && typeof alpha2Code === 'string' && alpha2Code.length === 2 && alpha2Code !== '-99')
-                                   ? alpha2Code.toLowerCase()
-                                   : null;
-            // --- End Alpha2Code Validation ---
+             if (!alpha2) {
+                 console.warn(`>>> loadCountryData: No alpha-2 code found in mapping for alpha-3: ${alpha3}`);
+             }
+             // <<< END Add alpha2Code >>>
 
+             if (!firstFeatureLogged) {
+                 console.log(">>> loadCountryData: Properties of first GeoJSON feature:", feature.properties, "ID:", feature.id, "Mapped Alpha2:", alpha2);
+                 firstFeatureLogged = true;
+             }
 
-            // Find representative point (BEST EFFORT - Do not require)
-            let lat = null, lon = null;
-            if (geometry && geometry.type === 'Point' && geometry.coordinates) {
-                 [lon, lat] = geometry.coordinates;
-            } else if (properties.lat && properties.lon) {
-                 lat = properties.lat;
-                 lon = properties.lon;
-            } else if (properties.latitude && properties.longitude) {
-                 lat = properties.latitude;
-                 lon = properties.longitude;
-            }
-             // Convert found lat/lon to numbers if they are strings
-             if (lat !== null && typeof lat === 'string') lat = parseFloat(lat);
-             if (lon !== null && typeof lon === 'string') lon = parseFloat(lon);
+             return {
+                 ...feature.properties,
+                 geometry: feature.geometry,
+                 alpha2Code: alpha2 || null // Add the mapped code
+             };
+        }).filter(country => country !== null);
 
+        console.log(`Successfully loaded and processed ${countriesData.length} countries.`);
 
-            // --- STRONGER Validation: Require name, valid geometry, AND valid alpha2Code ---
-            if (!name || !geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') || !validAlpha2Code) {
-                // Skip if essential info is missing (name, valid shape, or valid 2-letter code)
-                 console.warn(`Filtering out feature: Missing name, invalid geometry, or invalid/missing alpha2Code.`,
-                              { name, type: geometry?.type, codeFound: alpha2Code, codeValid: !!validAlpha2Code });
-                return null; // <<< Return null to filter this feature out
-            }
-            // --- End STRONGER Validation ---
-
-            // Log if representative lat/lon was NOT found (keep this logic)
-            if (lat === null || lon === null || isNaN(lat) || isNaN(lon)) {
-                console.log(`Note: Representative lat/lon properties not found or invalid for ${name}. Center will be calculated from geometry.`);
-                lat = 0;
-                lon = 0;
-            }
-
-            return {
-                name,
-                lat,
-                lon,
-                alpha2Code: validAlpha2Code, // Store the validated, non-null code
-                geometry: geometry
-            };
-        }).filter(country => country !== null); // Filter out the nulls returned above
-
-        if (countriesData.length === 0) {
-            console.error("No valid country data extracted from countries_shapes.geojson. Check the first feature properties log above and adjust property names in the script if needed.");
-            countryNameElement.textContent = "Error loading countries!";
-             if (guessButton) guessButton.disabled = true;
-             if (nextButton) nextButton.disabled = true;
-        } else {
-            console.log(`Loaded ${countriesData.length} countries with shapes from list.`);
+        if (countriesData.length > 0) {
+            console.log("Sample loaded country data (first):", countriesData[0].name, "alpha2Code:", countriesData[0].alpha2Code);
         }
 
     } catch (error) {
-        console.error("Failed to load or parse country shapes data:", error);
+        console.error("Failed to load or parse country shapes data:", error); // Log the actual error
         countryNameElement.textContent = "Error loading countries!";
         countriesData = [];
-         if (guessButton) guessButton.disabled = true;
-         if (nextButton) nextButton.disabled = true;
+        if (guessButton) guessButton.disabled = true;
+        if (nextButton) nextButton.disabled = true;
     }
 }
+// --- End Function ---
 
 // --- NEW Function to load facts ---
 async function loadFactsData() {
@@ -1018,7 +912,9 @@ async function startNewRound() {
 
     // Re-enable the regular 'Next' button if it exists and is hidden
     if (nextButton) nextButton.style.display = 'block';
-}
+
+    hideCountryInfoPanel(); // This should already be called
+} // <<< ADDED Closing brace for startNewRound function
 
 function handleMapClick(event) {
     console.log("handleMapClick fired!");
@@ -1074,6 +970,48 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 function deg2rad(deg) {
     return deg * (Math.PI / 180);
 }
+
+// --- Helper function to convert Lat/Lon to 3D point --- <<< ADDED
+function getPointFromLatLon(lat, lon) {
+    const phi = deg2rad(90 - lat); // Offset from North Pole
+    const theta = deg2rad(lon + 180); // Offset from Z-axis
+
+    const x = -(EARTH_RADIUS * Math.sin(phi) * Math.cos(theta));
+    const y = EARTH_RADIUS * Math.cos(phi);
+    const z = EARTH_RADIUS * Math.sin(phi) * Math.sin(theta);
+
+    return new THREE.Vector3(x, y, z);
+}
+// --- End Helper ---
+
+// --- Helper function to convert 3D point to Lat/Lon ---
+function getLatLonFromPoint(point) {
+    // Ensure the point is normalized to the sphere's surface for accurate calculation
+    const normalizedPoint = point.clone().normalize().multiplyScalar(EARTH_RADIUS); // Use EARTH_RADIUS here
+
+    // Latitude (angle from the equator, Y-up)
+    // Use asin for latitude calculation, range is -PI/2 to PI/2
+    const latRad = Math.asin(normalizedPoint.y / EARTH_RADIUS); // Divide by radius
+
+    // Longitude (angle around the Y-axis, from the XZ plane)
+    // Use atan2 for longitude calculation, range is -PI to PI
+    // Need to consider the radius in the XZ plane
+    const radiusXZ = Math.sqrt(normalizedPoint.x * normalizedPoint.x + normalizedPoint.z * normalizedPoint.z);
+    let lonRad;
+    if (radiusXZ < 0.00001) { // Handle poles (point is very close to Y axis)
+        lonRad = 0; // Assign default longitude (e.g., 0) at poles
+    } else {
+        // Correct atan2 arguments: atan2(y, x) or in 3D, often atan2(x, z) for angle from +Z axis
+        lonRad = Math.atan2(normalizedPoint.x, normalizedPoint.z);
+    }
+
+    // Convert radians to degrees
+    const lat = latRad * (180 / Math.PI);
+    const lon = lonRad * (180 / Math.PI);
+
+    return { lat, lon };
+}
+// --- End Helper ---
 
 // --- Helper function to calculate the geometric center of loaded boundary ---
 function calculateGeometryCenter(geometry) {
@@ -1302,7 +1240,7 @@ async function handleGuessConfirm() {
     nextButton.style.display = 'block'; // Show next button
 
     currentRoundScore = roundScore;
-}
+} // <<< ADDED Closing brace for handleGuessConfirm function
 
 // --- Marker/Pin/Target Handling ---
 
@@ -1539,49 +1477,155 @@ function onPointerUp(event) {
 
 // --- Initialization ---
 async function initGame() {
-    console.log("Initializing game...");
+    console.log(">>> initGame: Starting game initialization...");
+
     // initMap first, as it appends the renderer's canvas
     initMap();
+    console.log(">>> initGame: initMap() called.");
 
     // Now setup listeners and initialize other parts
     setupEventListeners();
     hideCountryInfoPanel();
     initScoreDisplay();
     initDistanceDisplay();
-    initShootingStars(); // <<< ADD THIS CALL
+    initShootingStars();
+
+    // <<< ADDED CHECK for loadCountryData >>>
+    console.log(">>> initGame: Checking typeof loadCountryData before use:", typeof loadCountryData);
+    if (typeof loadCountryData !== 'function') {
+        console.error(">>> CRITICAL: loadCountryData is NOT a function!");
+    }
+    // <<< ADDED CHECK for loadFactsData (just in case) >>>
+    console.log(">>> initGame: Checking typeof loadFactsData before use:", typeof loadFactsData);
+     if (typeof loadFactsData !== 'function') {
+        console.error(">>> CRITICAL: loadFactsData is NOT a function!");
+    }
 
     const dataPromises = [
-        loadCountryData(),
+        loadCountryData(), // <<< Line causing the error
         loadFactsData(),
     ];
 
+    console.log(">>> initGame: Preparing to load data...");
     try {
         await Promise.all(dataPromises);
-        console.log("All essential data loaded.");
+        console.log(">>> initGame: All essential data loaded (Promise.all resolved)."); // <<< ADDED LOG
 
         if (countriesData.length > 0) {
+            console.log(">>> initGame: Attempting to start first round..."); // <<< ADDED LOG
             startNewRound(); // Start the first round randomly
+            console.log(">>> initGame: startNewRound() called."); // <<< ADDED LOG
         } else {
-            console.error("Cannot start round, no country data loaded.");
+            console.error(">>> initGame: Cannot start round, no country data loaded.");
              if (guessButton) guessButton.disabled = true;
              if (nextButton) nextButton.disabled = true;
         }
     } catch (error) {
-        console.error("Error during game initialization loading:", error);
+        console.error(">>> initGame: Error during game initialization loading:", error); // <<< Enhanced Log
         if (countryNameElement) countryNameElement.textContent = "Error initializing game!";
          if (guessButton) guessButton.disabled = true;
          if (nextButton) nextButton.disabled = true;
     }
 
-    console.log("Game initialization sequence complete.");
+    console.log(">>> initGame: Game initialization sequence complete."); // <<< ADDED LOG
 }
 
 // Start Game
-window.onload = initGame; // <<< initGame call happens here
+// window.onload = initGame; // <<< initGame call happens here // <<< Let's make sure this isn't commented out or removed
 
-// Function to show the info panel (Mobile layout structure built here)
+// --- Add Global Variables for Dragging ---
+let isDraggingPanel = false;
+let panelStartY = 0;
+let panelStartHeight = 0;
+let panelCurrentAnimationFrame = null;
+
+// --- Drag Handler Functions ---
+function onPanelPointerDown(event) {
+    // Only handle primary pointer (e.g., first touch)
+    if (!event.isPrimary) return;
+    // Check if the click/touch is directly on the handle
+    if (event.target.closest('#info-panel-handle')) {
+        isDraggingPanel = true;
+        panelStartY = event.clientY; // Use clientY for vertical position
+        panelStartHeight = infoPanelElement.offsetHeight;
+        infoPanelElement.style.transition = 'none'; // Disable transition during drag
+        document.body.style.cursor = 'grabbing'; // Indicate dragging
+
+        // Attach move/up listeners to the window to track pointer anywhere
+        window.addEventListener('pointermove', onPanelPointerMove, { passive: false }); // passive: false needed to prevent scroll potentially
+        window.addEventListener('pointerup', onPanelPointerUp, { once: true }); // Remove after first 'up'
+        window.addEventListener('pointercancel', onPanelPointerUp, { once: true }); // Handle cancellation
+         // console.log("Panel drag started");
+    }
+}
+
+function onPanelPointerMove(event) {
+    if (!isDraggingPanel || !event.isPrimary) return;
+
+    // Prevent default scrolling action while dragging panel
+    event.preventDefault();
+
+    const currentY = event.clientY;
+    const deltaY = currentY - panelStartY; // Negative delta means dragging up
+
+    // Calculate new height
+    let newHeight = panelStartHeight - deltaY;
+
+    // Clamp height between min (handle height) and max (viewport * factor)
+    const minHeight = 60; // From CSS initial height
+    const maxHeight = window.innerHeight * 0.7; // Cap at 70% viewport height, adjust as needed
+    newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
+
+    // Throttle updates using requestAnimationFrame
+    cancelAnimationFrame(panelCurrentAnimationFrame); // Cancel previous frame
+    panelCurrentAnimationFrame = requestAnimationFrame(() => {
+        infoPanelElement.style.height = `${newHeight}px`;
+        // Update .up class based on whether it's significantly expanded
+        if (newHeight > minHeight + 20) { // Threshold to add/remove 'up'
+            infoPanelElement.classList.add('up');
+    } else {
+            infoPanelElement.classList.remove('up');
+        }
+    });
+}
+
+function onPanelPointerUp(event) {
+    if (!isDraggingPanel) return; // Only act if we were dragging
+     // console.log("Panel drag ended");
+
+    isDraggingPanel = false;
+    infoPanelElement.style.transition = 'height 0.3s ease-in-out'; // Re-enable transition
+    document.body.style.cursor = ''; // Reset cursor
+
+    // Remove window listeners
+    window.removeEventListener('pointermove', onPanelPointerMove);
+    window.removeEventListener('pointerup', onPanelPointerUp);
+    window.removeEventListener('pointercancel', onPanelPointerUp);
+
+    // Optional: Snap open/closed logic could be added here
+    // For now, just leave it at the dragged height
+    const currentHeight = infoPanelElement.offsetHeight;
+    const minHeight = 60;
+    const maxHeight = window.innerHeight * 0.7;
+    // Example Snap:
+    // if (currentHeight > maxHeight / 2) { // Snap open if more than half way
+    //     infoPanelElement.style.height = `${maxHeight}px`;
+    //     infoPanelElement.classList.add('up');
+    // } else { // Snap closed
+    //     infoPanelElement.style.height = `${minHeight}px`;
+    //     infoPanelElement.classList.remove('up');
+    // }
+}
+
+
+// --- Update show/hide functions ---
+
 function showCountryInfoPanel(country) {
-    if (!country || !country.name) return;
+    console.log(">>> showCountryInfoPanel called with country:", country);
+    if (!country || !country.name) {
+        console.warn(">>> showCountryInfoPanel: Invalid country object received.");
+        return;
+    }
     const countryName = country.name;
     const countryCode = country.alpha2Code;
 
@@ -1589,52 +1633,119 @@ function showCountryInfoPanel(country) {
     let flagHtml = '';
     if (countryCode) {
         const flagUrl = `https://flagcdn.com/w160/${countryCode.toLowerCase()}.png`;
-        flagHtml = `<img src="${flagUrl}" alt="Flag of ${countryName}" onerror="this.style.display='none'; console.error('Failed to load flag: ${flagUrl}');">`;
+        flagHtml = `<img src="${flagUrl}" alt="Flag of ${countryName}" class="country-flag" onerror="this.style.display='none'; console.error('Failed to load flag: ${flagUrl}');">`;
     } else {
-        flagHtml = `<div class="no-flag">(Flag unavailable)</div>`; // Placeholder if no flag
+        flagHtml = `<div class="no-flag">(Flag unavailable - Missing/Invalid Code)</div>`;
     }
 
     let factsHtml = '';
     let facts = null;
-    if (allCountryFacts) {
+    if (allCountryFacts && typeof allCountryFacts === 'object' && allCountryFacts !== null) {
         facts = allCountryFacts[countryName];
     }
-
     if (facts && typeof facts === 'string') {
         const factList = facts.split('. ').filter(f => f.trim() !== '');
-        factsHtml = factList.map(f => `<p>${f}.</p>`).join('');
-    } else if (facts) {
-        factsHtml = "<p>Fact data is not in the expected format.</p>";
+        factsHtml = `<div class="country-facts">${factList.map(f => `<p>${f}.</p>`).join('')}</div>`;
     } else {
-        factsHtml = "<p>No specific facts available for this country yet.</p>";
+        factsHtml = "<div class='country-facts'><p>No specific facts available for this country yet.</p></div>";
     }
+    // --- End Content Parts ---
 
     // --- Construct Panel Inner HTML ---
     infoPanelElement.innerHTML = `
-        <div class="info-content-wrapper">
-            <div class="info-flag-column">
-                ${flagHtml}
-            </div>
-            <div class="info-text-column">
-                <h2 id="panel-country-name">${countryName}</h2>
-                <hr>
-                <div id="panel-country-facts">
-                    ${factsHtml}
-                </div>
-            </div>
+        <div id="info-panel-handle">
+             <span>${country.name} - Drag Handle</span>
         </div>
-    `; // Overwrite entire panel content with new structure
+        <div id="info-panel-content">
+             ${flagHtml}
+             <hr>
+             ${factsHtml}
+        </div>
+    `;
 
-    // --- Visibility Control ---
-    infoPanelElement.style.display = 'block'; // Show the panel
+    // --- Set Initial Height & Overflow Based on Viewport Width ---
+    const isDesktop = window.innerWidth > 768;
+    const handleElement = infoPanelElement.querySelector('#info-panel-handle');
+    const contentElement = infoPanelElement.querySelector('#info-panel-content');
 
-    console.log(`Showing info panel for ${countryName}`);
+    // Make panel visible before measurements/styling
+    infoPanelElement.style.display = 'block';
+    infoPanelElement.classList.remove('up');
+    // Ensure panel itself doesn't scroll initially
+    infoPanelElement.style.overflow = 'hidden';
+
+    if (!handleElement || !contentElement) {
+        console.error("Cannot find handle or content element. Panel setup aborted.");
+        return;
+    }
+
+    // Get handle height (use fallback if measurement fails)
+    let handleHeight = handleElement.offsetHeight;
+    if (!handleHeight || handleHeight <= 0) {
+        console.warn("Measured handle height is 0 or invalid, using fallback 30px");
+        handleHeight = 30; // Fallback handle height
+    }
+
+    if (isDesktop) {
+        console.log("Setting up panel for Desktop view (scrollable content)...");
+        // Defer measurement for reliability
+        requestAnimationFrame(() => {
+            // Temporarily allow panel to take natural height for measurement
+            infoPanelElement.style.height = 'auto';
+            let contentHeight = contentElement.scrollHeight;
+            let panelRequiredHeight = contentHeight + handleHeight + 30; // Base required height + buffer
+            console.log(`rAF - Measured: Content Scroll=${contentHeight}, Handle Offset=${handleHeight}, Required Panel=${panelRequiredHeight}`);
+
+            const maxHeight = window.innerHeight * 0.85; // Max panel height
+            let finalPanelHeight = Math.min(panelRequiredHeight, maxHeight);
+
+            // Apply final styles
+            infoPanelElement.style.height = `${finalPanelHeight}px`;
+            infoPanelElement.style.overflow = 'hidden'; // Panel does not scroll
+
+            // Set content height to fill the panel (minus handle) and enable scrolling
+            contentElement.style.height = `${finalPanelHeight - handleHeight}px`;
+            contentElement.style.overflowY = 'auto'; // Always allow content scrolling on desktop
+
+            console.log(`rAF - Final Desktop: Panel Height=${finalPanelHeight}px, Content Height=${contentElement.style.height}, Content Overflow=auto`);
+        });
+
+    } else {
+        // Mobile view: Start collapsed, enable content scrolling
+        console.log("Setting up panel for Mobile view (scrollable content)...");
+        infoPanelElement.style.height = '60px'; // Panel starts small
+
+        // Set content height to fill panel (minus handle) and enable scrolling
+        contentElement.style.height = `calc(100% - ${handleHeight}px)`;
+        contentElement.style.overflowY = 'auto'; // Always allow content scrolling on mobile
+
+        console.log(`Mobile view: Panel Height=60px, Content Height=${contentElement.style.height}, Content Overflow=auto`);
+    }
+    // --- End Height Logic ---
+
+    // Attach listener
+    infoPanelElement.removeEventListener('pointerdown', onPanelPointerDown);
+    infoPanelElement.addEventListener('pointerdown', onPanelPointerDown);
 }
 
-// Function to hide the info panel (Clear innerHTML)
 function hideCountryInfoPanel() {
-    infoPanelElement.style.display = 'none';
-    infoPanelElement.innerHTML = ''; // Clear the content completely
+    infoPanelElement.style.display = 'none'; // Hide
+    infoPanelElement.classList.remove('up'); // Reset state
+
+    // Remove listener when panel is hidden
+    infoPanelElement.removeEventListener('pointerdown', onPanelPointerDown);
+     // console.log("Removed panel pointerdown listener");
+
+    // Just in case drag was interrupted, remove window listeners too
+    if (isDraggingPanel) {
+         window.removeEventListener('pointermove', onPanelPointerMove);
+         window.removeEventListener('pointerup', onPanelPointerUp);
+         window.removeEventListener('pointercancel', onPanelPointerUp);
+         isDraggingPanel = false;
+         document.body.style.cursor = '';
+    }
+
+    infoPanelElement.innerHTML = ''; // Clear content
 }
 
 // --- Add Event Listener for Toggle ---
@@ -1851,5 +1962,18 @@ function initShootingStars() {
         });
     }
     console.log(`Created pool of ${NUM_SHOOTING_STARS} shooting stars.`);
+} // --- End Initialize Shooting Stars ---
+
+console.log(">>> script.js: Reached end of script, checking initGame type before assigning listener...");
+console.log(">>> Type of initGame just before listener assignment:", typeof initGame);
+if (typeof initGame !== 'function') {
+    console.error(">>> CRITICAL: initGame is NOT a function at the time of listener assignment!");
 }
-// --- End Initialize Shooting Stars ---
+
+window.addEventListener('load', initGame); // <<< RESTORE this line
+// window.addEventListener('load', function() { // <<< REMOVE the temporary test
+//     console.log(">>> Load event fired successfully! (Basic test)");
+// });
+
+// --- Add Global Variables for Dragging ---
+// ... (rest of the code) ...

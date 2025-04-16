@@ -219,27 +219,6 @@ body {
 }
 
 /* Info Panel (Right Side) - styles remain the same */
-#info-panel {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-    width: 280px;
-    max-height: calc(100vh - 30px);
-    overflow-y: auto;
-    background-color: rgba(40, 40, 40, 0.85);
-    color: #e0e0e0;
-    border-radius: 24px;
-    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
-    padding: 20px;
-    z-index: 11;
-    display: none; /* Keep initial hide state */
-    transition: opacity 0.3s ease-in-out;
-    pointer-events: auto;
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    font-size: 0.9em; /* Slightly smaller base font */
-}
 
 #info-panel.visible { /* Use class for visibility */
     display: block; /* Make it take space */
@@ -402,147 +381,138 @@ body {
     }
 
 
-    /* --- Bottom Panel (#info-panel): Match Top Panel Style --- */
+    /* --- Bottom Panel (#info-panel): Pull-up Style --- */
     #info-panel {
-        position: relative;
-        top: 0;
-        left: 0;/* --- Size & Spacing: Full Width --- */
-        width: 100%; /* Full width */
-        max-width: none; /* Remove max-width limit */
-        margin-left: 0; /* Remove auto margins */
-        margin-right: 0;
-        margin-top: 0; /* Remove space above, sits flush with map */
-        max-height: 45vh; /* Adjust height limit if needed */
-        overflow-y: auto;
-        /* --- Appearance: Match Top Panel --- */
-        background-color: rgba(40, 40, 40, 0.9);
+        /* --- Positioning --- */
+        position: fixed;   /* Stick to the viewport */
+        bottom: 0;         /* Align to the bottom */
+        left: 0;
+        width: 100%;
+        z-index: 11;       /* Ensure it's above the map */
+
+        /* --- Initial Collapsed State --- */
+        height: 60px;      /* Height of the visible handle/stub */
+        overflow: hidden;  /* Hide content below the handle height */
+        display: none;     /* Initially hidden until guess is confirmed */
+
+        /* --- Appearance --- */
+        background-color: rgba(40, 40, 40, 0.95);
         color: #e0e0e0;
-        padding: 15px; /* Match padding */
-        border-radius: 16px 16px 0 0; /* Top-Left, Top-Right, Bottom-Right(0), Bottom-Left(0) */
-        box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.3); /* Keep top shadow */
-        z-index: 10;
-        display: none; /* Keep initial hide state */
-        opacity: 1;
-        transition: none;
-        pointer-events: auto;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.4);
         backdrop-filter: blur(5px);
         -webkit-backdrop-filter: blur(5px);
-        border: none; /* Remove side borders */
-        /* --- Flex Properties --- */
+
+        /* --- Animation --- */
+        transition: height 0.3s ease-in-out;
+
+        /* --- Other --- */
+        padding: 0; /* Padding applied to inner content instead */
+        box-sizing: border-box;
+        pointer-events: auto;
         flex-shrink: 0;
-        box-sizing: border-box; /* Ensure padding included */
-    }
-    #info-panel.visible {
-        display: block;
-        opacity: 1;
     }
 
-    /* Adjust Content Inside Bottom Panel */
-    /* Remove wrapper and columns if layout is simpler */
-    #info-panel .info-content-wrapper {
+    /* Style for when the panel is pulled up (expanded) */
+    #info-panel.up {
+        height: var(--panel-content-height, 50vh); /* Expand to content height or max */
+        overflow-y: auto; /* Allow scrolling the content */
+    }
+
+    /* Handle area for tapping */
+    #info-panel-handle {
+        height: 60px; /* Match the initial panel height */
         display: flex;
-        flex-direction: row;
         align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        position: sticky; /* Keep handle visible when scrolling */
+        top: 0;
+        background-color: rgba(40, 40, 40, 0.95); /* Match panel bg */
+        z-index: 1; /* Above scrollable content */
+        padding: 0 15px;
+        box-sizing: border-box;
+        font-weight: 500;
+        color: #e0e0e0; /* Ensure text is visible */
+        touch-action: none; /* Prevent browser scrolling during drag */
+        user-select: none; /* Prevent text selection during drag */
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
     }
-    #info-panel .info-flag-column {
-        flex: 0 0 auto;
-        width: 120px;
-        margin-right: 15px;
+    #info-panel-handle::after { /* Arrow indicator */
+        content: '▲';
+        margin-left: 10px;
+        font-size: 0.8em;
+        transition: transform 0.3s ease-in-out;
     }
-    #info-panel .info-flag-column img {
+    #info-panel.up #info-panel-handle::after {
+        transform: rotate(180deg); /* Point down when expanded */
+    }
+
+    /* Wrapper for the actual scrollable info */
+    #info-panel-content {
+        padding: 15px;
+        box-sizing: border-box;
+    }
+
+    /* --- Make sure body allows map to fill space above panel --- */
+    body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        max-height: 100vh;
+    }
+
+    #map-container {
+        flex-grow: 1;     /* Takes remaining vertical space */
+        position: relative;
         width: 100%;
         height: auto;
-        display: block;
-        vertical-align: middle;
-    }
-    #info-panel .info-flag-column .no-flag {
-         font-size: 0.7em;
-         color: #888;
-         text-align: center;
+        z-index: 1;
+        overflow: hidden;
     }
 
-    #info-panel .info-text-column {
-        flex: 1 1 auto;
-        min-width: 0;
+    /* ... Adjustments for content inside #info-panel-content ... */
+    #info-panel-content h2 { /* Example */
+         /* ... */
     }
+     #info-panel-content hr { /* Example */
+         /* ... */
+    }
+     #info-panel-content #panel-country-facts p { /* Example */
+         /* ... */
+    }
+}
 
-    #info-panel h2 { /* Title (was panel-country-name) */
-        font-size: 1.3em;
-        text-align: left;
-        margin: 0 0 8px 0;
-        color: #fff;
-        font-weight: 500;
-        /* Clear float if needed */
-        /* clear: both; */ /* Add if text doesn't wrap below flag properly */
-    }
-    #info-panel hr {
-        margin: 8px 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.2);
-        clear: both; /* Ensure HR clears the float */
-    }
-    #info-panel #panel-country-facts p {
+/* --- Reset for Desktop --- */
+@media (min-width: 769px) {
+    #info-panel {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        bottom: auto;
+        left: auto;
+        width: 280px;
+        height: auto;
+        max-height: calc(100vh - 30px);
+        overflow-y: auto;
+        background-color: rgba(40, 40, 40, 0.85);
+        border-radius: 24px;
+        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+        padding: 20px;
+        z-index: 11;
+        display: none;
+        transition: opacity 0.3s ease-in-out;
+        border: 1px solid rgba(255, 255, 255, 0.1);
         font-size: 0.9em;
-        line-height: 1.4;
-        margin: 0 0 8px 0;
-        color: #e0e0e0;
     }
-     #info-panel #panel-country-facts p strong {
-          color: #8ab4f8;
+     #info-panel.up { /* Reset .up state */
+         height: auto;
      }
-
-
-    /* --- Keep Toggles Wrapper (Side-by-Side on Mobile) --- */
-    .toggles-wrapper {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        width: 100%;
-        box-sizing: border-box;
-    }
-    .toggles-wrapper .toggle-container {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 8px 10px;
-        background-color: rgba(255, 255, 255, 0.05);
-        border-radius: 10px;
-        margin-bottom: 0;
-    }
-    .toggles-wrapper .toggle-container label {
-        margin-right: 5px;
-        font-size: 0.85em;
-        white-space: nowrap;
-    }
-    .toggles-wrapper .toggle-container input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        flex-shrink: 0;
-    }
-
-
-    /* --- Button Container (Reset for Mobile) --- */
-    #button-container {
-        max-height: none;
-        overflow: visible;
-        padding-top: 5px;
-        margin-top: 10px;
-        display: flex;
-        gap: 10px;
-        justify-content: center;
-        flex-wrap: wrap;
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    /* Keep Button styles */
-     #left-panel #guess-button, #left-panel #next-button {
-         padding: 10px 15px;
-         font-size: 0.9em;
-         border-radius: 14px;
-     }
-
-    /* ... (Map Container, Info Panel styles) ... */
+     #info-panel-handle { display: none; } /* Hide handle */
+     #info-panel-content { padding: 0; } /* Reset content padding */
 }
 
 /* --- Keep Desktop Styles (Overlay Layout) --- */
@@ -589,4 +559,46 @@ body {
      box-sizing: border-box;
      flex-wrap: nowrap; /* Prevent wrapping on desktop */
 }
-/* ... (Rest of desktop styles) ... */ 
+/* ... (Rest of desktop styles) ... */
+
+/* --- Keep Desktop Styles --- */
+@media (min-width: 769px) {
+    #info-panel {
+        /* Reset mobile styles for desktop */
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        bottom: auto; /* Reset bottom */
+        left: auto; /* Reset left */
+        width: 280px;
+        height: auto; /* Reset height */
+        max-height: calc(100vh - 30px);
+        overflow-y: auto;
+        background-color: rgba(40, 40, 40, 0.85);
+        color: #e0e0e0;
+        border-radius: 24px; /* Restore full border-radius */
+        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+        padding: 20px; /* Restore padding */
+        z-index: 11;
+        display: none; /* Initial hide state */
+        transition: opacity 0.3s ease-in-out; /* Restore desktop transition */
+        pointer-events: auto;
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 0.9em;
+        overflow: auto; /* Ensure scrolling works */
+    }
+     #info-panel.up { /* Reset .up state styles */
+         height: auto;
+         overflow-y: auto;
+     }
+
+     /* Hide mobile handle on desktop */
+     #info-panel-handle {
+          display: none;
+     }
+     #info-panel-content {
+          padding: 0; /* No extra padding needed */
+     }
+} 
