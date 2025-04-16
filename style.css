@@ -51,8 +51,9 @@ body {
     color: #fff;
     margin: 0;
     text-align: center;
-    font-size: 2em; /* Larger title */
-    font-weight: 500; /* Medium weight */
+    font-size: 4em; /* Doubled the size from 2em */
+    font-weight: 400; /* Bungee Spice is typically regular weight */
+    font-family: 'Bungee Spice', sans-serif; /* Apply the font */
 }
 
 #left-panel #game-info {
@@ -269,6 +270,16 @@ body {
 
 /* Starfield needs no changes */
 
+/* --- Add Keyframes for Bounce Animation --- */
+@keyframes bounceArrow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px); /* Adjust bounce height */
+  }
+}
+
 /* --- Responsive Styles for Tablets & Mobile (< 769px) --- */
 @media (max-width: 768px) {
     html, body {
@@ -290,7 +301,7 @@ body {
         color: #e0e0e0;
         border-radius: 0 0 16px 16px;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-        z-index: 10;
+        z-index: 11; /* Increased z-index */
         display: flex;
         flex-direction: column;
         gap: 12px; /* Adjust gap */
@@ -307,10 +318,11 @@ body {
     #left-panel h1 {
          width: 100%;
          box-sizing: border-box;
-         font-size: 1.4em;
+         font-size: 2.5em; /* Increased mobile size from 1.4em */
          text-align: center;
          margin-bottom: 5px;
-         font-weight: 500;
+         font-weight: 500; /* Adjust weight if needed for mobile with Bungee Spice */
+         font-family: 'Bungee Spice', sans-serif; /* Ensure font is still applied */
          padding: 0;
     }
     #left-panel #game-info {
@@ -388,7 +400,7 @@ body {
         bottom: 0;         /* Align to the bottom */
         left: 0;
         width: 100%;
-        z-index: 11;       /* Ensure it's above the map */
+        z-index: 10;       /* Decreased z-index (below left-panel) */
 
         /* --- Initial Collapsed State --- */
         height: 60px;      /* Height of the visible handle/stub */
@@ -446,9 +458,15 @@ body {
         margin-left: 10px;
         font-size: 0.8em;
         transition: transform 0.3s ease-in-out;
+        /* Add the bounce animation */
+        animation-name: bounceArrow;
+        animation-duration: 1.5s; /* Adjust speed */
+        animation-timing-function: ease-in-out;
+        animation-iteration-count: infinite;
     }
     #info-panel.up #info-panel-handle::after {
         transform: rotate(180deg); /* Point down when expanded */
+        animation: none; /* Stop bouncing when expanded */
     }
 
     /* Wrapper for the actual scrollable info */

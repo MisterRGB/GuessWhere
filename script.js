@@ -450,6 +450,30 @@ function animate() {
     const elapsedTime = clock.getElapsedTime();
     const now = performance.now();
 
+    // --- Animate Target Rings (Pulsing Effect) ---
+    if (targetRings.length > 0) {
+        const pulseElapsedTime = targetRingClock.getElapsedTime();
+
+        targetRings.forEach((ring, index) => {
+            // Stagger the animation start time for each ring
+            const delay = (index / NUM_TARGET_RINGS) * PULSE_DURATION * 0.5; // Adjust multiplier for overlap
+            const ringElapsedTime = Math.max(0, pulseElapsedTime - delay);
+            const progress = (ringElapsedTime % PULSE_DURATION) / PULSE_DURATION; // Loop progress 0 to 1
+
+            // Ease-out scaling (starts fast, slows down)
+            const easedScaleProgress = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
+            const currentScale = easedScaleProgress; // Scale directly from 0 to 1 (relative to max size)
+
+            // Fade out opacity (linear fade)
+            const currentOpacity = 1.0 - progress;
+
+            ring.scale.set(currentScale, currentScale, currentScale);
+            ring.material.opacity = Math.max(0, currentOpacity); // Ensure opacity doesn't go negative
+            ring.material.needsUpdate = true; // Necessary for opacity changes
+        });
+    }
+    // --- End Target Ring Animation ---
+
     if (cloudMesh) {
         cloudMesh.rotation.x = Math.sin(elapsedTime * CLOUD_X_OSCILLATION_FREQUENCY) * CLOUD_X_OSCILLATION_AMPLITUDE;
         cloudMesh.rotation.y += CLOUD_ROTATION_SPEED * deltaTime;
@@ -1654,7 +1678,7 @@ function showCountryInfoPanel(country) {
     // --- Construct Panel Inner HTML ---
     infoPanelElement.innerHTML = `
         <div id="info-panel-handle">
-             <span>${country.name} - Drag Handle</span>
+             <span>${country.name}</span> <!-- REMOVED ' - Drag Handle' -->
         </div>
         <div id="info-panel-content">
              ${flagHtml}
@@ -1940,8 +1964,8 @@ function initShootingStars() {
         transparent: true,
         opacity: 0.7,
         blending: THREE.AdditiveBlending, // Make them glow bright
-        depthWrite: false,
-        depthTest: false // Render on top
+        depthWrite: false, // Keep depthWrite false (don't block things behind stars)
+        depthTest: true // <<< CHANGE: Enable depth testing against the globe
     });
 
     // Define the line segment geometry (origin to a point along -Z)
