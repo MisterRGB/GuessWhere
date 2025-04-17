@@ -86,8 +86,8 @@ const TARGET_RING_MAX_SCALE = 0.4; // Max size the rings expand to (adjust)
 const TARGET_RING_THICKNESS = 0.01; // How thick the ring geometry is
 const PULSE_DURATION = 1.5; // Seconds for one pulse cycle (expand/fade)
 const TARGET_OFFSET = 0.06; // Keep offset from surface
-const DISTANCE_LINE_OFFSET = 0.03; // <<< INCREASED Offset (e.g., from 0.0015 to 0.03) {{ modify }}
-const LINE_ANIMATION_SPEED = 4.0; // <<< ADDED: Speed for the line itself {{ insert }}
+const DISTANCE_LINE_OFFSET = 0.1; // <<< INCREASED Offset (e.g., from 0.03 to 0.1) {{ insert }}
+const LINE_ANIMATION_SPEED = 4.0; // <<< ADDED: Speed for the line itself
 const MIN_LINE_DURATION = 750;    // <<< ADDED: Min duration for line {{ insert }}
 const MAX_LINE_DURATION = 5000;   // <<< ADDED: Max duration for line {{ insert }}
 const TARGET_RING_COUNT = 5;
@@ -198,17 +198,15 @@ function initMap() {
 
     // Scene
     scene = new THREE.Scene();
-    // Remove the solid background color
-    // scene.background = new THREE.Color(0xaaaaaa);
 
     // Camera
-    camera = new THREE.PerspectiveCamera(75, mapContainer.clientWidth / mapContainer.clientHeight, 0.1, STARFIELD_RADIUS * 1.5); // Increase far plane
+    camera = new THREE.PerspectiveCamera(75, mapContainer.clientWidth / mapContainer.clientHeight, 0.1, STARFIELD_RADIUS * 1.5);
     camera.position.z = 10;
 
     // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); // <<< Ensure alpha: true is present
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(mapContainer.clientWidth, mapContainer.clientHeight);
-    renderer.shadowMap.enabled = shadowToggleCheckbox.checked; // Set initial state
+    renderer.shadowMap.enabled = shadowToggleCheckbox.checked;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mapContainer.appendChild(renderer.domElement);
 
@@ -237,19 +235,16 @@ function initMap() {
 
     const stars = new THREE.Points(starGeometry, starMaterial);
     scene.add(stars);
-    // --- End Starfield ---
 
     // --- Lighting Setup ---
     const initialShadowState = shadowToggleCheckbox.checked;
-    // <<< INCREASE Ambient Intensity when shadows ON (e.g., 0.6 -> 0.9) >>>
-    const initialAmbientIntensity = initialShadowState ? 1.0 : 1.2;
-    // <<< DECREASE Sun Intensity slightly (e.g., 1.0 -> 0.9) >>>
-    const initialSunIntensity = 0.8;
+    const initialAmbientIntensity = initialShadowState ? 0.9 : 1.2;
+    const initialSunIntensity = 0.9;
 
     ambientLight = new THREE.AmbientLight(0xffffff, initialAmbientIntensity);
     scene.add(ambientLight);
 
-    sunLight = new THREE.DirectionalLight(0xffffff, initialSunIntensity); // Use new initial sun intensity
+    sunLight = new THREE.DirectionalLight(0xffffff, initialSunIntensity);
     sunLight.position.set(500, 300, 500);
     sunLight.castShadow = true;
 
@@ -296,70 +291,42 @@ function initMap() {
     console.log("Lens flare added to sunLight.");
     // --- End Lens Flare ---
 
-    // --- REMOVE Lens Flare Debug Helper ---
-    // const lightHelperGeometry = new THREE.SphereGeometry(0.2);
-    // const lightHelperMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    // const lightHelperMesh = new THREE.Mesh(lightHelperGeometry, lightHelperMaterial);
-    // lightHelperMesh.position.copy(sunLight.position);
-    // scene.add(lightHelperMesh);
-    // console.log(">>> DEBUG: Red sphere helper code removed/commented out.");
-    // --- End Remove Debug Helper ---
-
     // Globe
-    const globeGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
+    // <<< INCREASE GEOMETRY DETAIL >>>
+    const globeGeometry = new THREE.SphereGeometry(
+        EARTH_RADIUS,
+        256, // Increased segments
+        256  // Increased segments
+    );
+    console.log(`Globe geometry created with ${globeGeometry.parameters.widthSegments}x${globeGeometry.parameters.heightSegments} segments.`);
 
     // --- Texture Loading ---
     const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('assets/8k_earth_daymap.jpg', /*...*/);
+    const normalTexture = textureLoader.load('assets/world_texture_2normal.png', /*...*/);
+    const roughnessTexture = textureLoader.load('assets/world_texture_2specular.png', /*...*/);
 
-    // Load the base color texture (as before)
-    const texture = textureLoader.load(
-        'assets/8k_earth_daymap.jpg', // Assuming this is your base color map
-        () => { console.log("Base color texture loaded successfully."); },
+    // <<< ADD: Load Displacement Map Texture >>>
+    const displacementTexture = textureLoader.load(
+        'assets/earth_displacement.png', // <<< PATH TO YOUR DISPLACEMENT MAP
+        () => { console.log("Displacement map texture loaded successfully."); },
         undefined,
-        (err) => { console.error('Error loading base color texture:', err); }
+        (err) => { console.error('Error loading displacement map texture:', err); }
     );
-
-    // <<< ADDED: Load Normal Map >>>
-    const normalTexture = textureLoader.load(
-        'assets/world_texture_2normal.png', // Path to your normal map
-        () => { console.log("Normal map texture loaded successfully."); },
-        undefined,
-        (err) => { console.error('Error loading normal map texture:', err); }
-    );
-
-    // <<< ADDED: Load Specular/Roughness Map >>>
-    // We'll use the specular map as a roughness map for MeshStandardMaterial.
-    // Often, specular maps are inverted roughness maps (white = shiny = low roughness).
-    // If the globe looks inverted (water shiny, land dull), you might need to adjust this.
-    const roughnessTexture = textureLoader.load(
-        'assets/world_texture_2specular.png', // Path to your specular map
-        () => { console.log("Specular/Roughness map texture loaded successfully."); },
-        undefined,
-        (err) => { console.error('Error loading specular/roughness map texture:', err); }
-    );
+    // <<< END ADD >>>
 
     // --- Modify Material Definition ---
-    const material = new THREE.MeshStandardMaterial({
-        map: texture,                 // Base color
-        normalMap: normalTexture,     // Normal map
-        roughnessMap: roughnessTexture, // Roughness map (using specular)
-        // normalScale: new THREE.Vector2(0.5, 0.5), // Keep commented or adjust if needed
-        
-        // <<< DECREASE BASE ROUGHNESS >>>
-        // Lower values make the surface generally shinier.
-        // The roughnessMap then adds variation on top of this base value.
-        // Try a value significantly less than 1.0.
-        roughness: 0.7, // <<< CHANGE (Was likely 1.0 or default) - Try 0.5 first, adjust lower (e.g., 0.3) if needed.
-
-        // <<< Optionally slightly INCREASE METALNESS >>>
-        // This can also enhance reflections, but use sparingly for Earth.
-        metalness: 0.15 // <<< Optional: Try increasing slightly from 0.1 if needed.
+    const globeMaterial = new THREE.MeshStandardMaterial({
+        map: texture, // Color map
+        normalMap: normalTexture, // Normal map
+        roughnessMap: roughnessTexture, // Roughness map
+        displacementMap: displacementTexture, // Displacement map
+        displacementScale: 0.2, // Adjust this value for more height definition
     });
     // --- End Modify Material ---
 
-    globe = new THREE.Mesh(globeGeometry, material);
-    // --- Globe Receives Shadows ---
-    globe.receiveShadow = true; // Globe can always receive shadows if enabled
+    globe = new THREE.Mesh(globeGeometry, globeMaterial);
+    globe.receiveShadow = true;
     scene.add(globe);
 
     // --- Cloud Layer ---
@@ -394,55 +361,56 @@ function initMap() {
     }
     // --- End Cloud Layer ---
 
-    // --- Atmospheric Edge Glow ---
-    // const glowColor = new THREE.Color(0x90c8ff); // Light sky blue color
-    // const atmosphereSizeFactor = 1.03; // How much larger than Earth (e.g., 1.03 = 3% larger radius)
-    // const atmosphereGeometry = new THREE.SphereGeometry(EARTH_RADIUS * atmosphereSizeFactor, 64, 64);
+    // --- RE-ENABLE Atmospheric Edge Glow ---
+    // Ensure the entire block creating and adding atmosphereMesh is commented out or deleted
+    /*
+    const glowColor = new THREE.Color(0x90c8ff); // Light sky blue color
+    const atmosphereSizeFactor = 1.03; // How much larger than Earth
+    const atmosphereGeometry = new THREE.SphereGeometry(EARTH_RADIUS * atmosphereSizeFactor, 64, 64);
 
-    // const atmosphereMaterial = new THREE.ShaderMaterial({
-    //     uniforms: {
-    //         glowColor: { value: glowColor },
-    //         viewVector: { value: camera.position } // Updated in animate
-    //     },
-    //     vertexShader: `
-    //         uniform vec3 viewVector;
-    //         varying float intensity;
-    //         void main() {
-    //             vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
-    //             vec3 worldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
-    //             vec3 I = normalize( worldPosition.xyz - viewVector );
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            glowColor: { value: glowColor },
+            // Tweak power for Fresnel effect (controls thickness/falloff)
+            // Higher power = thinner, sharper glow; Lower power = thicker, softer glow
+            power: { value: 2.8 }, // <<< ADJUST: Try values between 2.0 and 4.0
+            // Tweak overall intensity/alpha multiplier
+            intensity: { value: 0.6 } // <<< ADJUST: Try values between 0.4 and 0.8
+        },
+        vertexShader: `
+            varying float vIntensity;
+            uniform float power; // Added uniform
+            void main() {
+                vec3 worldPosition = (modelMatrix * vec4( position, 1.0 )).xyz;
+                vec3 worldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+                vec3 viewDirection = normalize(cameraPosition - worldPosition); // Renamed from I for clarity
+                // Use abs() and clamp to prevent issues at grazing angles
+                vIntensity = pow( clamp(1.0 - abs(dot(worldNormal, viewDirection)), 0.0, 1.0), power );
+                gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4( position, 1.0 );
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 glowColor;
+            uniform float intensity; // Added uniform
+            varying float vIntensity;
+            void main() {
+                // Use the varying intensity calculated in vertex shader
+                float alpha = max(0.0, vIntensity) * intensity; // Use intensity uniform
+                gl_FragColor = vec4( glowColor, alpha );
+            }
+        `,
+        side: THREE.BackSide, // Render the inside facing surface
+        blending: THREE.AdditiveBlending, // Good for glows
+        transparent: true,
+        depthWrite: false // Don't obscure objects behind it
+    });
 
-    //             // Use a moderate power for Fresnel - controls thickness/falloff
-    //             intensity = pow( 1.0 - abs(dot(worldNormal, I)), 2.5 ); // Power 2.0-3.0 often looks good
-
-    //             gl_Position = projectionMatrix * viewMatrix * worldPosition;
-    //         }
-    //     `,
-    //     fragmentShader: `
-    //         uniform vec3 glowColor;
-    //         varying float intensity;
-    //         void main() {
-    //             float clampedIntensity = max(0.0, intensity);
-
-    //             // Alpha based on intensity - make it somewhat subtle
-    //             float alpha = clampedIntensity * 0.6; // Adjust multiplier (e.g., 0.5 - 0.8)
-
-    //             // Use the glow color directly
-    //             vec3 finalColor = glowColor;
-
-    //             gl_FragColor = vec4( finalColor, alpha );
-    //         }
-    //     `,
-    //     side: THREE.BackSide, // Render the inside facing surface
-    //     blending: THREE.AdditiveBlending, // Good for glows
-    //     transparent: true,
-    //     depthWrite: false
-    // });
-
-    // atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial); // Assign to the new variable
-    // scene.add(atmosphereMesh);
-    // console.log("Added atmospheric edge glow mesh.");
-    // --- End Atmospheric Edge Glow ---
+    // --- Declare atmosphereMesh if not already declared globally ---
+    let atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial); // Assign to variable
+    scene.add(atmosphereMesh);
+    console.log("Added atmospheric edge glow mesh.");
+    */
+    // --- End Atmospheric Edge Glow Removal ---
 
     // Controls
     controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -478,8 +446,7 @@ function initMap() {
     // Start animation loop
     animate();
 
-    console.log("Map initialized with normal and roughness maps.");
-    console.log(`Map initialized. Initial Ambient: ${initialAmbientIntensity}, Initial Sun: ${initialSunIntensity}`);
+    console.log("Map initialized with displacement map.");
 }
 
 function onWindowResize() {
@@ -535,11 +502,13 @@ function animate() {
     // --- Update Controls ---
     // controls.update(); // Moved camera logic block earlier, this might be redundant here
 
-    // --- Update Atmosphere Uniforms ---
-    // if (atmosphereMesh && atmosphereMesh.material.type === 'ShaderMaterial') {
-    //     atmosphereMesh.material.uniforms.viewVector.value.copy(camera.position);
-    // }
-    // --- End Atmosphere Update ---
+    // --- Update Atmosphere Uniforms (If using original shader) ---
+    /*
+    if (atmosphereMesh && atmosphereMesh.material.uniforms.viewVector) {
+        atmosphereMesh.material.uniforms.viewVector.value.copy(camera.position);
+    }
+    */
+    // --- End Atmosphere Update Removal ---
 
     // --- Camera Logic ---
     if (isCameraFollowing && currentLineCurve && isLineAnimating) {
@@ -693,11 +662,13 @@ function animate() {
                 console.log("Camera glide finished.");
             }
 
-            // Enable controls and set final target
             controls.enabled = true;
             controls.target.copy(targetCountryCenterVector);
-            controls.update();
-            console.log("Controls enabled, target set to destination.");
+            controls.update(); // Update controls state first
+
+            // <<< MODIFY MIN ZOOM DISTANCE >>>
+            controls.minDistance = EARTH_RADIUS + 0.2; // Allow closer zoom after guess result
+            console.log(`Controls enabled, target set, minDistance reduced to ${controls.minDistance.toFixed(2)}`);
 
             createTargetRings();
 
@@ -833,33 +804,30 @@ function highlightCountryBoundary(countryGeometry) {
     }
     removeHighlightedBoundaries(); // Call cleanup first
 
+    // <<< INCREASED Offset FURTHER >>>
+    const boundaryOffset = 0.05; // Increased from 0.01 to account for displacement
+
     const boundaryMaterial = new THREE.LineBasicMaterial({
         color: LINE_AND_TARGET_COLOR, // Yellow
-        linewidth: 1.5, // Keep a reasonable width
-        depthTest: true,        // <<< CHANGED: Enable depth testing
-        depthWrite: false,       // <<< KEPT: Don't write to depth buffer
-        transparent: true,     // Keep transparency option
-        opacity: 0.9,          // Make slightly less opaque if desired
-
-        polygonOffset: true,     // <<< ADDED: Enable polygon offset
-        polygonOffsetFactor: -1.0, // <<< ADDED: Push towards camera (negative value)
-        polygonOffsetUnits: -1.0   // <<< ADDED: Additional offset factor
+        linewidth: 1.5,
+        depthTest: true,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0.9,
     });
-    // --- Reduce the offset significantly ---
-    const boundaryOffset = 0.001; // <<< CHANGED: Very small offset from surface
-    // -------------------------------------
+
     const type = countryGeometry.type;
     const coordinates = countryGeometry.coordinates;
 
-    console.log(`[highlightCountryBoundary] Geometry type: ${type}`);
+    console.log(`[highlightCountryBoundary] Geometry type: ${type}, Offset: ${boundaryOffset}`); // Log offset
 
     try {
         let linesAdded = 0;
         if (type === 'Polygon') {
             const outerRingCoords = coordinates[0];
             console.log(`[highlightCountryBoundary] Processing Polygon with ${outerRingCoords.length} coordinates.`);
-            const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use small offset
-            console.log(`[highlightCountryBoundary] Converted Polygon to ${points3D.length} 3D points:`, points3D.slice(0, 5));
+            const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use updated offset
+            console.log(`[highlightCountryBoundary] Converted Polygon to ${points3D.length} 3D points (first 5):`, points3D.slice(0, 5));
 
             if (points3D.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
@@ -878,8 +846,8 @@ function highlightCountryBoundary(countryGeometry) {
                 const polygon = coordinates[i];
                 const outerRingCoords = polygon[0];
                  console.log(`[highlightCountryBoundary]   Part ${i}: ${outerRingCoords.length} coordinates.`);
-                const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use small offset
-                 console.log(`[highlightCountryBoundary]   Part ${i}: Converted to ${points3D.length} 3D points:`, points3D.slice(0, 5));
+                const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use updated offset
+                 console.log(`[highlightCountryBoundary]   Part ${i}: Converted to ${points3D.length} 3D points (first 5):`, points3D.slice(0, 5));
 
                 if (points3D.length >= 2) {
                     const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
@@ -1174,7 +1142,7 @@ async function handleGuessConfirm() {
          return;
     }
     if (guessButton) {
-        guessButton.disabled = true;
+    guessButton.disabled = true;
          console.log(`handleGuessConfirm: guessButton.disabled set to ${guessButton.disabled}`); // <<< ADD LOG
     }
     if (nextButton) {
@@ -1404,7 +1372,7 @@ function createOrUpdatePin(position3D) {
     // --- Enable GUESS button ONLY ---
     if (!isGuessLocked) {
          if (guessButton) {
-            guessButton.disabled = false;
+         guessButton.disabled = false;
              console.log(`createOrUpdatePin: guessButton.disabled set to ${guessButton.disabled}`); // <<< ADD LOG
          }
          // Ensure nextButton remains disabled
@@ -1972,33 +1940,30 @@ function handleCloudToggle(event) {
 // --- MOVED Handler function for the shadow toggle ---
 function handleShadowToggle(event) {
     const shadowsEnabled = event.target.checked;
-    renderer.shadowMap.enabled = shadowsEnabled; // Toggle renderer shadows
+    renderer.shadowMap.enabled = shadowsEnabled;
 
     if (shadowsEnabled) {
         // --- Shadows ON ---
         if (sunLight) {
-            sunLight.intensity = 0.9; // <<< SET Correct Sun Intensity when re-adding >>>
-            scene.add(sunLight);
-            console.log("Shadows ON: Added sunLight with intensity 0.9.");
-        } else {
-            console.error("Cannot enable shadows: sunLight not initialized.");
-        }
-        // <<< INCREASE Ambient Intensity when shadows ON >>>
-        if (ambientLight) ambientLight.intensity = 0.9; // Use the same increased value as initMap
+             // <<< REVERT Sun Intensity >>>
+             sunLight.intensity = 0.9;
+             scene.add(sunLight);
+             console.log("Shadows ON: Added sunLight with intensity 0.9.");
+        } else { /* error */ }
+        // <<< REVERT Ambient Intensity >>>
+        if (ambientLight) ambientLight.intensity = 0.9; // Back to 0.9
         console.log("Shadows ON: Set ambient intensity to 0.9.");
 
     } else {
         // --- Shadows OFF ---
         if (sunLight) {
-            scene.remove(sunLight); // Remove directional light
+            scene.remove(sunLight);
             console.log("Shadows OFF: Removed sunLight.");
         }
-        // Keep ambient light brighter when shadows are off
-        if (ambientLight) ambientLight.intensity = 1.2;
+        // <<< REVERT Ambient Intensity >>>
+        if (ambientLight) ambientLight.intensity = 1.2; // Back to 1.2
          console.log("Shadows OFF: Set ambient intensity to 1.2.");
     }
-     // Optional: Force render update if needed, though usually not necessary
-     // renderer.render(scene, camera);
 } 
 
 // --- Point-in-Polygon Logic ---
