@@ -16,6 +16,7 @@ const cloudToggleCheckbox = document.getElementById('cloud-toggle');
 const shadowToggleCheckbox = document.getElementById('shadow-toggle');
 const fullscreenButton = document.getElementById('fullscreen-button'); // <<< ADD THIS
 const leftPanelElement = document.getElementById('left-panel'); // <<< ADD Left Panel Element
+const musicToggleCheckbox = document.getElementById('music-toggle'); // <<< ADD THIS
 
 // --- Game State & Data ---
 let score = 0;
@@ -49,6 +50,7 @@ let quatLookAtDest = new THREE.Quaternion();
 let blendedQuat = new THREE.Quaternion();
 let currentRoundScore = 0;
 let animatedScoreDisplayValue = 0;
+let backgroundMusicStarted = false; // <<< ADDED FLAG
 
 // --- Three.js Variables ---
 let scene, camera, renderer, globe, controls, raycaster, mouse;
@@ -643,6 +645,7 @@ function animate() {
         // --- Animation End Handling (MOVED INSIDE isLineAnimating block) ---
         if (progress >= 1.0) {
             isLineAnimating = false; // Stop line animation flag
+            stopSound('travelLine'); // Stop the travel line sound
 
             // Hide score sprite shortly after animation ends
             if (scoreSprite) setTimeout(() => { scoreSprite.visible = false; }, 100); // Hide after 100ms delay
@@ -693,6 +696,12 @@ function animate() {
                  console.warn("animate (end): nextButton not found to enable.");
             }
             // -------------------------
+
+            // --- Play Score Increase Sound ---
+            if (currentRoundScore > 0) { // Only play if score was added
+               playSound('scoreIncrease');
+            }
+            // --------------------------------
         } // <<< Closing brace for 'if (progress >= 1.0)' block
     } // <<< MOVED Closing brace for 'if (isLineAnimating)' block here
 
@@ -899,6 +908,14 @@ async function startNewRound() {
     console.log(`Start of Round - Initial Cam Pos: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}`);
     console.log(`Start of Round - Initial Controls Target: ${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)}`);
 
+    // --- Stop Previous Sounds ---
+    stopSound('travelLine');
+    stopSound('correctGuess'); // Just in case
+    stopSound('incorrectGuess');
+    stopSound('scoreIncrease');
+    // Don't stop background music here unless intended
+    // ---------------------------
+
     isLineAnimating = false;
     isCameraFollowing = false;
 
@@ -994,8 +1011,6 @@ function handleMapClick(event) {
         return;
     }
 
-    console.log("handleMapClick: Raycasting against globe object:", globe);
-
     // Calculate mouse position in normalized device coordinates (-1 to +1)
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1007,15 +1022,28 @@ function handleMapClick(event) {
     // Calculate objects intersecting the picking ray
     const intersects = raycaster.intersectObject(globe); // Check intersection only with the globe
 
-    console.log("handleMapClick: Globe intersects length:", intersects.length);
-
     if (intersects.length > 0) {
-        // Get the intersection point on the globe's surface
+        // Get the intersection point on the globe's *displaced* surface
         const intersectionPoint = intersects[0].point;
-        console.log("Map clicked at (3D):", intersectionPoint);
+        console.log("Map clicked at (displaced 3D):", intersectionPoint);
 
-        // Calculate position slightly above the surface for the sprite
-        const pinPosition = intersectionPoint.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET); // Use PIN_OFFSET
+        // --- Calculate position using surface normal ---
+        let pinPosition;
+        if (intersects[0].face) { // Ensure face data is available
+            const faceNormal = intersects[0].face.normal;
+            const normalMatrix = new THREE.Matrix3().getNormalMatrix(globe.matrixWorld);
+            const worldNormal = faceNormal.clone().applyMatrix3(normalMatrix).normalize();
+
+            // Offset the pin position *along the world normal* from the intersection point
+            pinPosition = intersectionPoint.clone().addScaledVector(worldNormal, PIN_OFFSET);
+            console.log("Pin position calculated using surface normal offset.");
+        } else {
+            // Fallback: If face normal isn't available (shouldn't happen with BufferGeometry)
+            console.warn("Intersection face data not available, using radial offset fallback.");
+            pinPosition = intersectionPoint.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET);
+        }
+        // --- End Normal Calculation ---
+
 
         // Use the new function to create/update the pin
         createOrUpdatePin(pinPosition);
@@ -1135,6 +1163,117 @@ function calculateGeometryCenter(geometry) {
     console.log(`Calculated geometry center: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`);
     return center;
 }
+
+// <<< MOVE AUDIO FUNCTIONS HERE >>>
+// --- Audio Functions ---
+function loadAudio() {
+    console.log("Loading audio files...");
+    let loadedCount = 0;
+    const totalSounds = Object.keys(audioFiles).length;
+    const promises = []; // Keep track of loading promises
+
+    for (const key in audioFiles) {
+        const path = audioFiles[key];
+        const audio = new Audio(path);
+        audio.preload = 'auto'; // Encourage browser to load
+
+        const promise = new Promise((resolve, reject) => {
+            audio.addEventListener('canplaythrough', () => {
+                console.log(`Audio loaded: ${key} (${path})`);
+                sounds[key] = audio;
+                loadedCount++;
+                resolve(); // Resolve the promise for this sound
+            }, false);
+
+            audio.addEventListener('error', (e) => {
+                console.error(`Error loading audio: ${key} (${path})`, e);
+                // Resolve even on error to not block game start, but log it
+                resolve();
+            });
+
+            // Attempt to load (some browsers need this)
+            audio.load();
+        });
+        promises.push(promise);
+    }
+
+    // Return a promise that resolves when all sounds have tried loading
+    return Promise.all(promises).then(() => {
+        console.log(`Audio loading attempted. ${loadedCount}/${totalSounds} successfully loaded.`);
+        isAudioLoaded = true; // Set flag after all attempts
+        if (sounds.backgroundMusic) {
+            sounds.backgroundMusic.loop = true;
+            sounds.backgroundMusic.volume = 0.3; // Adjust volume as needed
+            // <<< ADDED LOG >>>
+            console.log("Background music object loaded:", sounds.backgroundMusic);
+            console.log("Background music readyState:", sounds.backgroundMusic.readyState);
+        } else {
+             // <<< ADDED LOG >>>
+             console.warn("Background music object NOT found in sounds after loading.");
+        }
+    });
+}
+
+function playSound(soundName) {
+    if (!isAudioLoaded || !sounds[soundName]) {
+        // console.warn(`Sound "${soundName}" not loaded or available.`);
+        return;
+    }
+    try {
+        const audio = sounds[soundName]; // Get the audio object
+        // <<< ADDED LOG >>>
+        if (soundName === 'backgroundMusic') {
+            console.log(`Attempting to play backgroundMusic. Current time: ${audio.currentTime}, Paused: ${audio.paused}`);
+        }
+
+        // Rewind the sound to the beginning before playing (optional for background music if resume is desired)
+        // For simplicity, we'll keep rewinding for now.
+        audio.currentTime = 0;
+
+        const playPromise = audio.play();
+
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                // <<< ADDED LOG >>>
+                if (soundName === 'backgroundMusic') {
+                     console.log("Background music playback started successfully.");
+                }
+            }).catch(error => {
+                // <<< MODIFIED LOGGING >>>
+                if (soundName === 'backgroundMusic') {
+                    console.warn(`Background music playback failed. Likely due to autoplay restrictions. Error: ${error.name}`);
+                } else if (error.name !== 'NotAllowedError') {
+                    // Log errors for other sounds unless it's the common NotAllowedError
+                    console.error(`Error playing sound "${soundName}":`, error);
+                }
+            });
+        }
+         // <<< ADDED LOG >>>
+         if (soundName === 'backgroundMusic') {
+            // Log state immediately after calling play()
+            setTimeout(() => console.log(`Background music state shortly after play() attempt: Paused: ${audio.paused}`), 10);
+        }
+
+    } catch (error) {
+        console.error(`Error attempting to play sound "${soundName}":`, error);
+    }
+}
+
+
+function stopSound(soundName) {
+     if (!isAudioLoaded || !sounds[soundName]) {
+        return;
+    }
+     try {
+        sounds[soundName].pause();
+        sounds[soundName].currentTime = 0; // Rewind
+    } catch (error) {
+        console.error(`Error stopping sound "${soundName}":`, error);
+    }
+}
+// --- End Audio Functions ---
+// <<< END MOVE >>>
+
 
 async function handleGuessConfirm() {
     if (!playerGuess || !currentCountry || !pinSprite) {
@@ -1320,12 +1459,21 @@ async function handleGuessConfirm() {
     nextButton.style.display = 'block'; // Show next button
 
     currentRoundScore = roundScore;
+
+    // --- Play Correct/Incorrect Sound ---
+    if (roundScore > 0) { // Assuming any score > 0 is 'correct enough'
+        playSound('correctGuess');
+    } else {
+        playSound('incorrectGuess');
+    }
+    // -----------------------------------
 } // <<< ADDED Closing brace for handleGuessConfirm function
 
 // --- Marker/Pin/Target Handling ---
 
 // Function to create or update the pin sprite
 function createOrUpdatePin(position3D) {
+    const isNewPin = !pinSprite; // Check if this is the first placement
     const currentScale = getPinScale(); // <-- Get scale based on device
 
     if (!pinSprite) {
@@ -1353,6 +1501,9 @@ function createOrUpdatePin(position3D) {
                     pinSprite.position.copy(position3D); // Set position
                     scene.add(pinSprite); // Add to scene AFTER texture is ready
                     console.log("Pin sprite created and texture loaded.");
+                    if (isNewPin) { // Only play sound on initial creation
+                        playSound('pinPlace');
+                    }
                 } else {
                     console.warn("Texture loaded but pinSprite was removed before completion.");
                     texture.dispose(); // Clean up texture if sprite is gone
@@ -1366,6 +1517,8 @@ function createOrUpdatePin(position3D) {
         pinSprite.position.copy(position3D);
         // Optionally update scale if window resized while pin exists (might be overkill)
         // pinSprite.scale.set(currentScale, currentScale, currentScale);
+        // Play sound on update too if desired, or keep only on creation above
+        playSound('pinPlace'); // Example: Play sound on move too
     }
     // Update player guess coordinates
     playerGuess = getLatLonFromPoint(position3D);
@@ -1484,6 +1637,7 @@ function removeTargetRings() {
 // --- Drag and Hover Logic ---
 
 function onPointerDown(event) {
+    tryStartBackgroundMusic(); // <<< ADD THIS LINE AT THE START
     console.log("onPointerDown fired!");
     // ... (calculate mouse, set up raycaster) ...
     mouse.x = ((event.clientX - renderer.domElement.getBoundingClientRect().left) / renderer.domElement.width) * 2 - 1;
@@ -1534,20 +1688,29 @@ function onPointerMove(event) {
 
     // --- Dragging Logic ---
     if (isDraggingPin && pinSprite) {
-        // --- Add log here ---
-        console.log(">>> Dragging pin... Raycasting against globe."); // <-- Important log
+        console.log(">>> Dragging pin... Raycasting against globe.");
 
         const globeIntersects = raycaster.intersectObject(globe);
-        // --- Add log here ---
         console.log(`Globe intersects during drag: ${globeIntersects.length}`);
 
         if (globeIntersects.length > 0) {
             const intersectionPoint = globeIntersects[0].point;
-            const newPinPosition = intersectionPoint.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET);
-            // --- Add log here ---
-            // console.log(`Updating pin position to: ${newPinPosition.x.toFixed(2)}, ${newPinPosition.y.toFixed(2)}, ${newPinPosition.z.toFixed(2)}`);
+
+            // --- Calculate position using surface normal (like in handleMapClick) ---
+            let newPinPosition;
+            if (globeIntersects[0].face) {
+                const faceNormal = globeIntersects[0].face.normal;
+                const normalMatrix = new THREE.Matrix3().getNormalMatrix(globe.matrixWorld);
+                const worldNormal = faceNormal.clone().applyMatrix3(normalMatrix).normalize();
+                newPinPosition = intersectionPoint.clone().addScaledVector(worldNormal, PIN_OFFSET);
+            } else {
+                console.warn("Dragging: Intersection face data not available, using radial offset fallback.");
+                newPinPosition = intersectionPoint.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET);
+            }
+            // --- End Normal Calculation ---
+
             pinSprite.position.copy(newPinPosition);
-            playerGuess = getLatLonFromPoint(newPinPosition);
+            playerGuess = getLatLonFromPoint(newPinPosition); // Update guess coords
         }
     }
 }
@@ -1568,55 +1731,48 @@ function onPointerUp(event) {
 async function initGame() {
     console.log(">>> initGame: Starting game initialization...");
 
-    // initMap first, as it appends the renderer's canvas
     initMap();
     console.log(">>> initGame: initMap() called.");
 
-    // Now setup listeners and initialize other parts
-    setupEventListeners();
+    setupEventListeners(); // Sets initial state now
+
     hideCountryInfoPanel();
     initScoreDisplay();
     initDistanceDisplay();
     initShootingStars();
 
-    // <<< ADDED CHECK for loadCountryData >>>
-    console.log(">>> initGame: Checking typeof loadCountryData before use:", typeof loadCountryData);
-    if (typeof loadCountryData !== 'function') {
-        console.error(">>> CRITICAL: loadCountryData is NOT a function!");
-    }
-    // <<< ADDED CHECK for loadFactsData (just in case) >>>
-    console.log(">>> initGame: Checking typeof loadFactsData before use:", typeof loadFactsData);
-     if (typeof loadFactsData !== 'function') {
-        console.error(">>> CRITICAL: loadFactsData is NOT a function!");
-    }
-
-    const dataPromises = [
-        loadCountryData(), // <<< Line causing the error
-        loadFactsData(),
-    ];
-
-    console.log(">>> initGame: Preparing to load data...");
+    console.log(">>> initGame: Preparing to load data and audio...");
     try {
+        await loadAudio();
+        console.log(">>> initGame: Audio loading process finished.");
+
+        const dataPromises = [
+            loadCountryData(),
+            loadFactsData(),
+        ];
         await Promise.all(dataPromises);
-        console.log(">>> initGame: All essential data loaded (Promise.all resolved)."); // <<< ADDED LOG
+        console.log(">>> initGame: All essential game data loaded.");
+
+        // // <<< Start Background Music >>>
+        // if (sounds.backgroundMusic) {
+        //     console.log(">>> initGame: Starting background music...");
+        //     playSound('backgroundMusic'); // <<< DELETE OR COMMENT OUT THIS LINE
+        // } else {
+        //     console.warn(">>> initGame: Background music not loaded, cannot play.");
+        // }
+        // // <<< End Background Music Start >>>
 
         if (countriesData.length > 0) {
-            console.log(">>> initGame: Attempting to start first round..."); // <<< ADDED LOG
-            startNewRound(); // Start the first round randomly
-            console.log(">>> initGame: startNewRound() called."); // <<< ADDED LOG
+            console.log(">>> initGame: Attempting to start first round...");
+            startNewRound();
+            console.log(">>> initGame: startNewRound() called.");
         } else {
-            console.error(">>> initGame: Cannot start round, no country data loaded.");
-             if (guessButton) guessButton.disabled = true;
-             if (nextButton) nextButton.disabled = true;
+            // ... (error handling) ...
         }
     } catch (error) {
-        console.error(">>> initGame: Error during game initialization loading:", error); // <<< Enhanced Log
-        if (countryNameElement) countryNameElement.textContent = "Error initializing game!";
-         if (guessButton) guessButton.disabled = true;
-         if (nextButton) nextButton.disabled = true;
+        // ... (error handling) ...
     }
-
-    console.log(">>> initGame: Game initialization sequence complete."); // <<< ADDED LOG
+    console.log(">>> initGame: Game initialization sequence complete.");
 }
 
 // --- Initialize Shooting Stars --- MOVED DEFINITION EARLIER
@@ -1711,22 +1867,75 @@ function onPanelToggleClick(event) {
 
 // --- MODIFY setupEventListeners Function ---
 function setupEventListeners() {
-    // ... existing listeners ...
+    console.log("Setting up event listeners...");
+    if (guessButton) {
+         guessButton.addEventListener('click', () => {
+             tryStartBackgroundMusic();
+             playSound('buttonClick'); // <<< ADDED SOUND FOR GUESS BUTTON
+             handleGuessConfirm(); // Call original handler
+         });
+         console.log("Added listener to guessButton.");
+    } // ... else ...
+
+    if (nextButton) {
+         nextButton.addEventListener('click', () => {
+             tryStartBackgroundMusic();
+             playSound('buttonClick'); // <<< ADDED SOUND FOR NEXT BUTTON
+             startNewRound(); // Call original handler
+         });
+         console.log("Added listener to nextButton.");
+    } // ... else ...
+
+    if (cloudToggleCheckbox) {
+         cloudToggleCheckbox.addEventListener('change', handleCloudToggle);
+         console.log("Added listener to cloudToggleCheckbox.");
+    } // ... else ...
+
+    if (shadowToggleCheckbox) {
+         shadowToggleCheckbox.addEventListener('change', handleShadowToggle);
+         console.log("Added listener to shadowToggleCheckbox.");
+    } // ... else ...
+
+    // Pointer/Map interaction listeners
+    if (mapContainer) {
+        mapContainer.addEventListener('pointerdown', onPointerDown, false);
+        mapContainer.addEventListener('pointermove', onPointerMove, false);
+        mapContainer.addEventListener('pointerup', onPointerUp, false);
+        mapContainer.addEventListener('pointerleave', onPointerUp, false);
+        console.log("Added map interaction listeners to mapContainer.");
+    } else {
+        console.error("setupEventListeners: mapContainer not found, cannot add map interaction listeners.");
+    }
 
     window.addEventListener('resize', onWindowResize);
     console.log("Added listener for window resize.");
 
-    // <<< ADD Resize listener specific for mobile panel height adjustment >>>
-    window.addEventListener('resize', () => {
-        // Recalculate mobile panel height only if it's currently 'up' and on mobile view
-        if (window.innerWidth <= 768 && infoPanelElement && infoPanelElement.classList.contains('up')) {
-            console.log("Window resized while mobile panel is up, recalculating height...");
-            updateMobilePanelHeight();
-        }
-    });
-    console.log("Added resize listener for mobile panel height update.");
 
-    console.log("Event listeners setup complete.");
+    if (fullscreenButton) {
+        fullscreenButton.addEventListener('click', () => {
+            tryStartBackgroundMusic(); // Keep this
+            playSound('buttonClick');
+            toggleFullScreen(); // Call original handler
+        });
+        console.log("Added listener to fullscreenButton.");
+    } // ... else ...
+
+     // Add resize listener for mobile panel height update
+     window.addEventListener('resize', () => { /* ... */ });
+     console.log("Added resize listener for mobile panel height update.");
+
+
+    // <<< ADD MUSIC TOGGLE LISTENER >>>
+    if (musicToggleCheckbox) {
+        // Set initial state based on flag (should be false -> music off)
+        musicToggleCheckbox.checked = backgroundMusicStarted;
+        musicToggleCheckbox.addEventListener('change', handleMusicToggle);
+        console.log("Added listener to musicToggleCheckbox.");
+    } else {
+        console.warn("musicToggleCheckbox not found, cannot add listener.");
+    }
+    // <<< END ADD >>>
+     console.log("Event listeners setup complete."); // <<< Moved log to end
 }
 
 // --- MODIFY showCountryInfoPanel Function (Minor adjustment) ---
@@ -1779,66 +1988,21 @@ function showCountryInfoPanel(country) {
     infoPanelElement.style.overflow = 'hidden';
     infoPanelElement.style.height = ''; // Ensure no initial inline height
 
-    // --- Attach CLICK Listener (using setTimeout as before) ---
+    // --- Attach CLICK Listener ---
     setTimeout(() => {
         const freshHandleElement = infoPanelElement.querySelector('#info-panel-handle');
         if (freshHandleElement) {
             freshHandleElement.removeEventListener('click', onPanelToggleClick);
-            freshHandleElement.addEventListener('click', onPanelToggleClick);
-            console.log("Added toggle click listener to panel handle (after timeout).");
-        } else {
-            console.error("Could not find #info-panel-handle to attach listener (after timeout).");
-        }
+            freshHandleElement.addEventListener('click', (event) => {
+                tryStartBackgroundMusic(); // <<< ADD
+                playSound('buttonClick');
+                onPanelToggleClick(event);
+            });
+            console.log("Added toggle click listener with sound to panel handle (after timeout).");
+        } // ... else ...
     }, 50);
 
-
-    // --- Set Height & Overflow Based on Viewport Width ---
-    const isDesktop = window.innerWidth > 768;
-
-    if (!isDesktop) {
-        // <<< Wrap Mobile Setup Logic in requestAnimationFrame >>>
-        console.log("Setting up panel for Mobile view (requesting frame)...");
-        requestAnimationFrame(() => {
-            console.log("rAF: Setting up Mobile view panel content...");
-            const contentElement = infoPanelElement.querySelector('#info-panel-content');
-            if (contentElement) {
-                // Still need to set content height to allow scrolling within the panel
-                const handleHeight = 60; // Assuming default handle height for calc
-                contentElement.style.height = `calc(100% - ${handleHeight}px)`;
-                contentElement.style.overflowY = 'auto';
-                console.log(`rAF Mobile view: Content Height=${contentElement.style.height}, Content Overflow=auto.`);
-            } else {
-                // This error should be much less likely now
-                console.error("rAF Mobile setup: Cannot find content element!");
-            }
-        });
-        // <<< End rAF wrapper >>>
-    } else {
-        // Desktop logic remains the same (already uses rAF for measurements)
-        console.log("Setting up panel for Desktop view (scrollable content)...");
-        requestAnimationFrame(() => {
-            // ... (desktop height calculation logic) ...
-            const contentElement = infoPanelElement.querySelector('#info-panel-content');
-            if (!contentElement) { console.error("Desktop rAF: Content element not found"); return; }
-
-            infoPanelElement.style.height = 'auto'; // Reset for measurement
-            let handleHeight = 0; // Desktop doesn't use handle height for panel size
-
-            let contentHeight = contentElement.scrollHeight;
-            let panelRequiredHeight = contentHeight + 20; // Base on content + padding
-
-            const maxHeight = window.innerHeight * 0.85;
-            let finalPanelHeight = Math.min(panelRequiredHeight, maxHeight);
-
-            infoPanelElement.style.height = `${finalPanelHeight}px`;
-            infoPanelElement.style.overflow = 'hidden';
-
-            contentElement.style.height = `${finalPanelHeight}px`; // Content fills calculated panel height
-            contentElement.style.overflowY = 'auto';
-
-            console.log(`rAF - Final Desktop: Panel Height=${finalPanelHeight}px, Content Height=${contentElement.style.height}, Content Overflow=auto`);
-        });
-    }
+    // ... rest of function ...
 }
 
 // --- MODIFY hideCountryInfoPanel ---
@@ -1916,6 +2080,17 @@ function setupEventListeners() {
         console.log("Added listener to fullscreenButton.");
     } else {
         console.warn("fullscreenButton not found, cannot add listener.");
+    }
+    // <<< END ADD >>>
+
+    // <<< ADD MUSIC TOGGLE LISTENER >>>
+    if (musicToggleCheckbox) {
+        // Set initial state based on flag (should be false -> music off)
+        musicToggleCheckbox.checked = backgroundMusicStarted;
+        musicToggleCheckbox.addEventListener('change', handleMusicToggle);
+        console.log("Added listener to musicToggleCheckbox.");
+    } else {
+        console.warn("musicToggleCheckbox not found, cannot add listener.");
     }
     // <<< END ADD >>>
 }
@@ -2097,3 +2272,59 @@ function toggleFullScreen() {
     }
 }
 // --- End Fullscreen Toggle Function ---
+
+// --- Audio ---
+let sounds = {}; // Object to hold loaded Audio objects
+let isAudioLoaded = false;
+const audioFiles = {
+    buttonClick: 'assets/audio/button_click.mp3',
+    correctGuess: 'assets/audio/correct_guess.mp3',
+    incorrectGuess: 'assets/audio/incorrect_guess.mp3',
+    travelLine: 'assets/audio/travel_line.mp3',
+    pinPlace: 'assets/audio/pin_place.mp3',
+    backgroundMusic: 'assets/audio/background_music.mp3',
+    scoreIncrease: 'assets/audio/score_increase.mp3'
+};
+
+// --- Audio Functions ---
+// ... (loadAudio, playSound, stopSound) ...
+
+function tryStartBackgroundMusic() {
+    // <<< ADD CHECK FOR TOGGLE STATE >>>
+    if (!backgroundMusicStarted && isAudioLoaded && sounds.backgroundMusic && musicToggleCheckbox && musicToggleCheckbox.checked) {
+        console.log("First user interaction detected & music toggle ON, trying to start background music...");
+        playSound('backgroundMusic');
+        backgroundMusicStarted = true; // Set flag so it only tries once
+    } else if (!backgroundMusicStarted && musicToggleCheckbox && !musicToggleCheckbox.checked) {
+         console.log("First user interaction detected, but music toggle is OFF.");
+         backgroundMusicStarted = true; // Still set flag to prevent repeated checks, but don't play.
+    }
+}
+// --- End Audio Functions ---
+
+// ... after handleShadowToggle ...
+
+// --- Handler function for the music toggle ---
+function handleMusicToggle(event) {
+    const musicEnabled = event.target.checked;
+    if (musicEnabled) {
+        // Try to play only if the music is loaded and hasn't been prevented by autoplay yet
+        if (isAudioLoaded && sounds.backgroundMusic && sounds.backgroundMusic.paused) {
+             console.log("Music toggle ON - attempting to play background music.");
+             tryStartBackgroundMusic(); // Use this to handle the initial play logic
+        } else {
+             console.log("Music toggle ON - music already playing or not loaded.");
+        }
+    } else {
+        // Pause if music is loaded and currently playing
+        if (isAudioLoaded && sounds.backgroundMusic && !sounds.backgroundMusic.paused) {
+            console.log("Music toggle OFF - pausing background music.");
+            sounds.backgroundMusic.pause(); // Directly pause here
+        } else {
+             console.log("Music toggle OFF - music already paused or not loaded.");
+        }
+    }
+}
+
+// --- Point-in-Polygon Logic ---
+// ...
