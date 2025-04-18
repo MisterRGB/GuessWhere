@@ -1838,6 +1838,11 @@ function onPointerUp(event) {
 async function initGame() {
     console.log(">>> initGame: Starting game initialization...");
 
+    // --- Attempt to Enter Fullscreen on Load ---
+    console.log(">>> initGame: Attempting to enter fullscreen...");
+    toggleFullScreen(); // <<< ADD THIS CALL
+    // --- End Fullscreen Attempt ---
+
     initMap(); // Sets up scene, camera, renderer, controls
     setupEventListeners(); // Sets up button listeners (including the new start button)
     hideCountryInfoPanel(); // Keep this hidden initially
