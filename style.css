@@ -32,7 +32,7 @@ body {
     border-radius: 24px;
     box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
     z-index: 10;
-    display: flex;
+    display: none; /* <<< ADD THIS TO HIDE BY DEFAULT */
     flex-direction: column;
     gap: 15px;
     pointer-events: auto;
@@ -204,6 +204,13 @@ body {
     left: 0;
     z-index: 1; /* Behind panels */
     overflow: hidden;
+    filter: blur(4px); /* <<< ADD BLUR BY DEFAULT */
+    transition: filter 0.4s ease-out; /* <<< ADD SMOOTH TRANSITION */
+}
+
+/* New rule to remove blur when game starts */
+body.game-active #map-container {
+    filter: none; /* <<< REMOVE BLUR */
 }
 
 #map-container canvas {
@@ -220,6 +227,34 @@ body {
 }
 
 /* Info Panel (Right Side) - styles remain the same */
+
+#info-panel {
+    /* --- Positioning --- */
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    bottom: auto; /* Reset bottom */
+    left: auto; /* Reset left */
+    width: 280px;
+    height: auto; /* Desktop height is auto */
+    max-height: calc(100vh - 30px);
+    /* Panel scrolls on desktop */
+    overflow-y: auto;
+    background-color: rgba(40, 40, 40, 0.85);
+    color: #e0e0e0;
+    border-radius: 24px; /* Restore full border-radius */
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+    padding: 20px; /* Restore padding */
+    z-index: 11;
+    display: none; /* Initial hide state */
+    transition: opacity 0.3s ease-in-out; /* Restore desktop transition */
+    pointer-events: auto;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.9em;
+    overflow: auto; /* Ensure scrolling works */
+}
 
 #info-panel.visible { /* Use class for visibility */
     display: block; /* Make it take space */
@@ -302,7 +337,6 @@ body {
         border-radius: 0 0 16px 16px;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
         z-index: 11; /* Increased z-index */
-        display: flex;
         flex-direction: column;
         gap: 12px; /* Adjust gap */
         pointer-events: auto;
@@ -395,28 +429,34 @@ body {
 
     /* --- Bottom Panel (#info-panel): Pull-up Style --- */
     #info-panel {
-        /* --- Positioning --- */
-        position: fixed;   /* Stick to the viewport */
-        bottom: 0;         /* Align to the bottom */
-        left: 0;
-        width: 100%;
-        z-index: 10;       /* Decreased z-index (below left-panel) */
+        /* --- Positioning (Restore Fixed Bottom) --- */
+        position: fixed;   /* <<< ENSURE: Stick to the viewport */
+        bottom: 0;         /* <<< ENSURE: Align to the bottom */
+        left: 0;           /* <<< ENSURE: Align to the left */
+        width: 100%;       /* <<< ENSURE: Full viewport width */
+        z-index: 10;       /* Ensure it's below the top panel but above map */
+        /* --- Remove absolute positioning properties --- */
+        top: auto;         /* <<< REMOVE/RESET: No absolute top */
+        right: auto;       /* <<< REMOVE/RESET: No absolute right */
 
         /* --- Initial Collapsed State --- */
         height: 60px;      /* Height of the visible handle/stub */
         overflow: hidden;  /* Hide content below the handle height */
-        display: none;     /* Initially hidden until guess is confirmed */
+        display: block; /* <<< ENSURE: Changed from none to block for initial visibility check */
+        visibility: hidden; /* <<< ADD: Initially hide content but keep layout space */
+        opacity: 0; /* <<< ADD: Initially transparent */
+
 
         /* --- Appearance --- */
         background-color: rgba(40, 40, 40, 0.95);
         color: #e0e0e0;
-        border-radius: 16px 16px 0 0;
+        border-radius: 16px 16px 0 0; /* <<< ENSURE: Rounded top corners */
         box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.4);
         backdrop-filter: blur(5px);
         -webkit-backdrop-filter: blur(5px);
 
         /* --- Animation --- */
-        transition: height 0.3s ease-in-out;
+        transition: height 0.3s ease-in-out, visibility 0s linear 0.3s, opacity 0.3s ease-in-out; /* <<< MODIFY: Add transitions */
 
         /* --- Other --- */
         padding: 0; /* Padding applied to inner content instead */
@@ -425,9 +465,19 @@ body {
         flex-shrink: 0;
     }
 
+    /* Style for when the panel should be VISIBLE (after guess) */
+    #info-panel.visible { /* <<< ADD THIS CLASS RULE */
+        visibility: visible;
+        opacity: 1;
+        transition: height 0.3s ease-in-out, visibility 0s linear 0s, opacity 0.3s ease-in-out;
+    }
+
+
     /* Style for when the panel is toggled up (expanded) */
     #info-panel.up {
-        overflow: hidden; /* Keep overflow hidden on the panel itself */
+        /* Height will be set dynamically by JS, so no explicit height here */
+        /* Ensure overflow is still hidden */
+        overflow: hidden;
     }
 
     /* Handle area for TAPPING */
@@ -452,10 +502,11 @@ body {
         margin-left: 10px;
         font-size: 0.8em;
         transition: transform 0.3s ease-in-out;
-        animation-name: bounceArrow;
-        animation-duration: 1.5s;
-        animation-timing-function: ease-in-out;
-        animation-iteration-count: infinite;
+        /* Removed animation for simplicity, can be added back */
+        /* animation-name: bounceArrow; */
+        /* animation-duration: 1.5s; */
+        /* animation-timing-function: ease-in-out; */
+        /* animation-iteration-count: infinite; */
     }
     #info-panel.up #info-panel-handle::after {
         transform: rotate(180deg);
@@ -566,6 +617,20 @@ body {
         accent-color: #8ab4f8;
         flex-shrink: 0; /* Prevent checkbox shrinking */
     }
+
+    #country-label-container {
+        display: block; /* Ensure it's displayed */
+        visibility: visible; /* Ensure it's visible */
+        opacity: 1; /* Ensure it's fully opaque */
+        /* Add any other positioning or styling as needed */
+        position: absolute;
+        top: 10px; /* Adjust as needed */
+        left: 50%;
+        transform: translateX(-50%);
+        color: white; /* Or your preferred color */
+        font-size: 1.2em; /* Adjust as needed */
+        z-index: 10; /* Ensure it's above the globe */
+    }
 }
 
 /* --- Reset for Desktop --- */
@@ -575,21 +640,22 @@ body {
         position: absolute;
         top: 15px;
         right: 15px;
-        bottom: auto; /* Reset bottom */
-        left: auto; /* Reset left */
+        bottom: auto;
+        left: auto;
         width: 280px;
-        height: auto; /* Desktop height is auto */
+        height: auto;
         max-height: calc(100vh - 30px);
-        /* Panel scrolls on desktop */
         overflow-y: auto;
         background-color: rgba(40, 40, 40, 0.85);
         color: #e0e0e0;
-        border-radius: 24px; /* Restore full border-radius */
+        border-radius: 24px;
         box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
-        padding: 20px; /* Restore padding */
+        padding: 20px;
         z-index: 11;
-        display: none; /* Initial hide state */
-        transition: opacity 0.3s ease-in-out; /* Restore desktop transition */
+        display: none;
+        visibility: visible;
+        opacity: 1;
+        transition: opacity 0.3s ease-in-out;
         pointer-events: auto;
         backdrop-filter: blur(5px);
         -webkit-backdrop-filter: blur(5px);
@@ -603,16 +669,16 @@ body {
     }
     /* Content takes auto height within the scrollable panel */
     #info-panel-content {
-         padding: 0; /* No extra padding needed for content div */
-         height: auto; /* Let content height be natural */
-         overflow-y: visible; /* Content doesn't need its own scrollbar */
+         padding: 0;
+         height: auto;
+         overflow-y: visible;
     }
 
     /* Fullscreen Button --- Desktop Positioning Override --- */
     #fullscreen-button {
-        top: auto;       /* Reset top */
-        bottom: 15px;    /* Set bottom for desktop */
-        right: 15px;     /* Keep right position */
+        top: auto;
+        bottom: 15px;
+        right: 15px;
     }
 }
 
@@ -669,32 +735,33 @@ body {
         position: absolute;
         top: 15px;
         right: 15px;
-        bottom: auto; /* Reset bottom */
-        left: auto; /* Reset left */
+        bottom: auto;
+        left: auto;
         width: 280px;
-        height: auto; /* Reset height */
+        height: auto;
         max-height: calc(100vh - 30px);
         overflow-y: auto;
         background-color: rgba(40, 40, 40, 0.85);
         color: #e0e0e0;
-        border-radius: 24px; /* Restore full border-radius */
+        border-radius: 24px;
         box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
-        padding: 20px; /* Restore padding */
+        padding: 20px;
         z-index: 11;
-        display: none; /* Initial hide state */
-        transition: opacity 0.3s ease-in-out; /* Restore desktop transition */
+        display: none;
+        visibility: visible;
+        opacity: 1;
+        transition: opacity 0.3s ease-in-out;
         pointer-events: auto;
         backdrop-filter: blur(5px);
         -webkit-backdrop-filter: blur(5px);
         border: 1px solid rgba(255, 255, 255, 0.1);
         font-size: 0.9em;
-        overflow: auto; /* Ensure scrolling works */
     }
      #info-panel-handle {
           display: none;
      }
      #info-panel-content {
-          padding: 0; /* No extra padding needed */
+          padding: 0;
      }
 }
 
@@ -793,8 +860,8 @@ body {
     font-size: 16px;
     margin-top: 5px;
     padding: 5px;
-    display: inline-block; /* Example: Display inline with other elements */
-    color: white; /* Ensure text is visible */
+    display: inline-block;
+    color: #8ab4f8; /* Match color to #distance */
 }
 
 #game-info-container {
@@ -845,4 +912,77 @@ body {
     cursor: pointer;
     transition: background-color 0.2s ease, transform 0.1s ease;
     font-weight: 500;
+}
+
+#country-name-display,
+#score-display {
+    color: #8ab4f8; /* Match color to #distance */
+}
+
+.modal-overlay {
+    position: fixed; /* Fixed position to overlay everything */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent black background */
+    display: flex; /* Use flexbox for centering */
+    justify-content: center;
+    align-items: center;
+    z-index: 1000; /* Ensure it's above other elements */
+    color: #fff;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box; /* Include padding in width/height */
+}
+
+.modal-content {
+    background-color: #282c34; /* Dark background for the content box */
+    padding: 30px 40px;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    max-width: 600px; /* Limit width */
+    width: 90%; /* Responsive width */
+}
+
+.modal-content h1 {
+    margin-top: 0;
+    color: #61dafb; /* Accent color */
+    font-family: 'Bungee Spice', sans-serif;
+    font-size: 3em; /* <<< ADD THIS LINE */
+}
+
+.modal-content h2 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    color: #ccc;
+}
+
+
+.modal-content p {
+    margin-bottom: 15px;
+    line-height: 1.6;
+    color: #ddd;
+}
+
+#start-game-button {
+    background-color: #61dafb;
+    color: #282c34;
+    border: none;
+    padding: 12px 25px;
+    font-size: 1.1em;
+    font-weight: bold;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    margin-top: 20px;
+}
+
+#start-game-button:hover {
+    background-color: #4fa8c5;
+}
+
+/* --- Hide modal when game starts --- */
+.modal-overlay.hidden {
+    display: none;
 }

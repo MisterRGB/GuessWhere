@@ -15,6 +15,9 @@ const shadowToggleCheckbox = document.getElementById('shadow-toggle');
 const fullscreenButton = document.getElementById('fullscreen-button'); // <<< ADD THIS
 const leftPanelElement = document.getElementById('left-panel'); // <<< ADD Left Panel Element
 const musicToggleCheckbox = document.getElementById('music-toggle'); // <<< ADD THIS
+const startModal = document.getElementById('start-modal'); // <<< ADD
+const startGameButton = document.getElementById('start-game-button'); // <<< ADD
+console.log(">>> Top Level: startGameButton element check:", startGameButton); // <<< ADD LOG 1
 
 // --- Game State & Data ---
 let score = 0;
@@ -50,6 +53,7 @@ let currentRoundScore = 0;
 let animatedScoreDisplayValue = 0;
 let backgroundMusicStarted = false; // <<< ADDED FLAG
 // let isScoreSoundPlaying = false; // <<< ADD THIS FLAG
+let isStartingNextRound = false; // <<< ADD NEW FLAG
 
 // --- Three.js Variables ---
 let scene, camera, renderer, globe, controls, raycaster, mouse;
@@ -128,6 +132,7 @@ const COUNTRY_LABEL_COLOR = '#ffffff';   // White text
 const COUNTRY_LABEL_CANVAS_WIDTH = 512;  // <<< INCREASED (e.g., from 384) for wider text space
 const COUNTRY_LABEL_CANVAS_HEIGHT = 96; // <<< INCREASED (e.g., from 64) for taller text space
 const COUNTRY_LABEL_SPRITE_SCALE = 1.8;  // <<< INCREASED (e.g., from 1.0) for larger overall sprite
+const COUNTRY_LABEL_SPRITE_SCALE_MOBILE = 2.4; // <<< NEW: Larger scale for mobile
 // --- End Add ---
 
 // --- PIN CONSTANTS (Ensure these are here and defined) ---
@@ -431,25 +436,35 @@ function initMap() {
     */
     // --- End Atmospheric Edge Glow Removal ---
 
-    // Controls
+    // --- OrbitControls Setup ---
     controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; // Enable damping for smoother movement
+    controls.dampingFactor = 0.05; // Adjust damping strength
+    controls.rotateSpeed = 0.4; // Adjust rotation speed
+    controls.panSpeed = 0.2; // Adjust panning speed
+    controls.enableZoom = true; // Enable zooming
+    controls.minDistance = EARTH_RADIUS + 0.5; // Prevent zooming inside the Earth
+    controls.maxDistance = EARTH_RADIUS * 5; // Limit zoom distance
+    controls.enablePan = true; // Enable panning
+    controls.zoomSpeed = 1.2; // Adjust zoom speed
+    controls.target.set(0, 0, 0); // Set the point to orbit around
+    controls.update();
 
-    // --- Enable and Configure Damping for Smoothness ---
-    controls.enableDamping = true; // ESSENTIAL for smooth zoom/rotate inertia
-    controls.dampingFactor = 0.1; // Increase slightly (default 0.05). Higher = more drag/slower stop. Try 0.08 - 0.15
+    // --- Disable vertical rotation below the horizon ---
+    controls.minPolarAngle = Math.PI * 0.1; // radians (0 is straight down)
+    controls.maxPolarAngle = Math.PI * 0.9; // radians (Math.PI/2 is straight up)
 
-    // --- Adjust Sensitivity ---
-    controls.rotateSpeed = 0.3; // Further reduce rotation speed (try 0.2 - 0.4)
-    controls.zoomSpeed = 0.7;   // Reduce zoom speed slightly (try 0.6 - 0.9)
-    controls.panSpeed = 0.5;    // Keep pan speed reduced or adjust
+    // --- Disable horizontal panning beyond a certain limit ---
+    controls.minAzimuthAngle = - Infinity; // radians
+    controls.maxAzimuthAngle = Infinity; // radians
 
-    // --- Other Control Settings ---
-    controls.minDistance = EARTH_RADIUS + 1; // Prevent zooming inside globe
-    controls.maxDistance = 50; // Adjust max zoom out if needed
+    // --- Add Event Listener for Zoom Ending ---
+    controls.addEventListener('change', () => {
+        // Optional: Add logic here to do something when the camera changes
+        // For example, you could update a UI element with the current zoom level
+    });
 
-    // The combination of lower rotateSpeed and damping should make
-    // rotation feel less sensitive, especially when zoomed in,
-    // as the damping effect is more noticeable with smaller movements.
+    // --- End OrbitControls Setup ---
 
     // Raycaster for click detection
     raycaster = new THREE.Raycaster();
@@ -516,7 +531,7 @@ function calculateCameraDistanceForRadius(targetRadius, cameraFovRadians) {
 
 function animate() {
     requestAnimationFrame(animate);
-    const deltaTime = clock.getDelta(); // Ensure deltaTime is available
+    const deltaTime = clock.getDelta();
     const elapsedTime = clock.getElapsedTime();
     const now = performance.now();
 
@@ -549,35 +564,37 @@ function animate() {
         cloudMesh.rotation.y += CLOUD_ROTATION_SPEED * deltaTime;
     }
 
-    // --- Update Controls ---
-    // controls.update(); // Moved camera logic block earlier, this might be redundant here
-
-    // --- Update Atmosphere Uniforms (If using original shader) ---
-    /*
-    if (atmosphereMesh && atmosphereMesh.material.uniforms.viewVector) {
-        atmosphereMesh.material.uniforms.viewVector.value.copy(camera.position);
-    }
-    */
-    // --- End Atmosphere Update Removal ---
-
     // --- Camera Logic ---
     if (isCameraFollowing && currentLineCurve && isLineAnimating) {
         const lineElapsedTime = now - lineAnimationStartTime;
-        // Clamp progress strictly before 1.0 for calculations inside the loop
         const progress = Math.min(lineElapsedTime / currentAnimationDuration, 0.9999);
-
         const currentCurvePos = currentLineCurve.getPointAt(progress);
 
         // Position Update (maintaining distance)
         surfacePoint.copy(currentCurvePos).normalize().multiplyScalar(EARTH_RADIUS);
         directionVector.copy(surfacePoint).normalize();
         targetCameraPosition.copy(directionVector).multiplyScalar(initialCameraDistance);
-        camera.position.lerp(targetCameraPosition, 0.08); // Smoother position lerp
 
-        // Rotation Logic: Blend towards final destination lookAt near the end
+        // --- Smooth camera position update ---
+        const lerpFactor = 0.08; // Keep or adjust this value (e.g., 0.05 for smoother)
+        const proposedPosition = camera.position.clone().lerp(targetCameraPosition, lerpFactor);
+
+        // Collision Prevention (remains the same)
+        const proposedDistance = proposedPosition.length();
+        const minGlideDistance = EARTH_RADIUS + 0.5;
+        if (proposedDistance < minGlideDistance) {
+            proposedPosition.normalize().multiplyScalar(minGlideDistance);
+            // console.log("Camera glide position clamped to min distance.");
+        }
+        camera.position.copy(proposedPosition);
+        // --- End Smooth camera position update ---
+
+
+        // Rotation Logic (remains the same: blending lookAt)
         if (progress < FINAL_ROTATION_BLEND_START) {
             camera.lookAt(currentCurvePos);
         } else {
+            // ... (blended quaternion logic using quatLookAtTip, quatLookAtDest) ...
             const rotationBlend = Math.max(0, Math.min(1, (progress - FINAL_ROTATION_BLEND_START) / (1.0 - FINAL_ROTATION_BLEND_START)));
             const easedBlend = 0.5 - 0.5 * Math.cos(rotationBlend * Math.PI);
 
@@ -587,15 +604,18 @@ function animate() {
             tempMatrix.lookAt(camera.position, targetCountryCenterVector, camera.up);
             quatLookAtDest.setFromRotationMatrix(tempMatrix);
 
-            // --- Use correct instance slerp method ---
             blendedQuat.slerpQuaternions(quatLookAtTip, quatLookAtDest, easedBlend);
-
             camera.quaternion.copy(blendedQuat);
         }
 
-        controls.target.copy(currentCurvePos);
+        // --- REMOVE OR COMMENT OUT continuous target update ---
+        // controls.target.copy(currentCurvePos); // <<< DELETE OR COMMENT OUT THIS LINE
+        // ----------------------------------------------------
+
+        // --- DO NOT CALL controls.update() here ---
 
     } else if (controls.enabled) {
+        // Update controls ONLY when not gliding and they are enabled
         controls.update();
     }
     // --- End Camera Logic ---
@@ -690,55 +710,66 @@ function animate() {
         if (progress >= 1.0) {
             isLineAnimating = false;
             stopSound('travelLine');
-            if (scoreSprite) setTimeout(() => { scoreSprite.visible = false; }, 100);
+            if (scoreSprite) setTimeout(() => { scoreSprite.visible = false; }, 100); // Hide score slightly after
             console.log("Line animation finished.");
+            const isMobile = window.innerWidth <= 768;
+
             if (isCameraFollowing) {
                 isCameraFollowing = false; // Stop glide
 
-                // Set final position precisely
+                // Set final camera position (remains the same)
                 directionVector.copy(targetCountryCenterVector).normalize();
-                targetCameraPosition.copy(directionVector).multiplyScalar(initialCameraDistance);
+                let finalDistance = isMobile ? MOBILE_FINAL_ZOOM : Math.max(initialCameraDistance, EARTH_RADIUS + 0.5);
+                targetCameraPosition.copy(directionVector).multiplyScalar(finalDistance);
                 camera.position.copy(targetCameraPosition);
 
-                // Set final rotation precisely looking at destination
+                // Final lookAt
                 camera.lookAt(targetCountryCenterVector);
+                console.log("Camera glide finished and final position/rotation set.");
 
-                console.log("Camera glide finished.");
-            }
+                controls.enabled = true;
+                // --- Set final controls target HERE ---
+                controls.target.copy(targetCountryCenterVector); // <<< ENSURE THIS IS SET
+                // --- Set final min distance (remains the same) ---
+                controls.minDistance = isMobile ? MOBILE_MIN_DISTANCE_AFTER_GUESS : EARTH_RADIUS + 0.2;
+                // --- Call update ONCE after setting final state ---
+                controls.update(); // <<< ENSURE THIS IS CALLED
+                console.log(`Controls enabled, target set, final camera pos: (${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}), minDistance set to ${controls.minDistance.toFixed(2)}`);
 
-            controls.enabled = true;
-            controls.target.copy(targetCountryCenterVector);
-            controls.update(); // Update controls state first
+             } else { // Camera wasn't following
+                 // ... (set controls enabled, target, min distance, update) ...
+                 controls.enabled = true;
+                 controls.target.copy(targetCountryCenterVector);
+                 controls.minDistance = isMobile ? MOBILE_MIN_DISTANCE_AFTER_GUESS : EARTH_RADIUS + 0.2;
+                 controls.update();
+                 console.log("Animation finished, camera wasn't following. Controls updated.");
+             }
 
-            // <<< MODIFY MIN ZOOM DISTANCE >>>
-            controls.minDistance = EARTH_RADIUS + 0.2; // Allow closer zoom after guess result
-            console.log(`Controls enabled, target set, minDistance reduced to ${controls.minDistance.toFixed(2)}`);
+             // --- ADD/RESTORE COUNTRY LABEL DISPLAY ---
+             if (currentCountry && targetCountryCenterVector && updateCountryLabel) {
+                 console.log(">>> animate (end): Calling updateCountryLabel for:", currentCountry.name);
+                 updateCountryLabel(currentCountry.name, targetCountryCenterVector); // <<< ADD THIS CALL
+             } else {
+                 console.warn(">>> animate (end): Could not update country label (missing data or function).");
+             }
+             // --- END ADD/RESTORE ---
 
-            createTargetRings();
+             // --- Show target rings (already exists) ---
+             createTargetRings();
+             console.log(">>> animate (end): createTargetRings called.");
 
-            // <<< SHOW COUNTRY LABEL >>>
-            if (currentCountry && targetCountryCenterVector.lengthSq() > 0.01) {
-                updateCountryLabel(currentCountry.name, targetCountryCenterVector);
-            }
-            // <<< END SHOW COUNTRY LABEL >>>
+             // --- Show Info Panel (already exists, handled by handleGuessConfirm setting .visible class) ---
+             if (infoPanelElement && !infoPanelElement.classList.contains('visible')) {
+                // Redundant check, but safe. handleGuessConfirm should add .visible
+                console.warn(">>> animate (end): Info panel element exists but lacks 'visible' class.");
+             }
 
-            // --- Debugging showCountryInfoPanel call ---
-            console.log("Attempting to call showCountryInfoPanel...");
-            console.log("Is currentCountry valid before call?", currentCountry);
-            if (currentCountry) {
-                 try {
-                     showCountryInfoPanel(currentCountry);
-                     console.log("Successfully finished calling showCountryInfoPanel.");
-    } catch (error) {
-                      console.error("Error occurred *during* showCountryInfoPanel call:", error);
-                 }
-            }
 
             // --- Enable Next Button ---
             if (nextButton) {
                 nextButton.disabled = false;
-                nextButton.style.display = 'block';
-                console.log(`animate (end): nextButton.disabled set to ${nextButton.disabled}`); // <<< ADD LOG
+                // nextButton.style.display = 'block'; // display: block is likely handled elsewhere now
+                console.log(`animate (end): nextButton.disabled explicitly set to ${nextButton.disabled}`); // <<< ADD/MODIFY THIS LOG
             } else {
                  console.warn("animate (end): nextButton not found to enable.");
             }
@@ -855,19 +886,21 @@ function highlightCountryBoundary(countryGeometry) {
 
     const boundaryOffset = 0.05; // Keep the existing radial offset
 
-    // <<< ADD polygonOffset properties to the material >>>
+    // <<< MODIFY Boundary Material >>>
     const boundaryMaterial = new THREE.LineBasicMaterial({
         color: LINE_AND_TARGET_COLOR, // Yellow
-        linewidth: 1.5,
-        depthTest: true,        // Keep depth testing enabled
-        depthWrite: false,       // Keep depth write disabled
+        linewidth: 1.5, // Note: linewidth > 1 might not work on all platforms/drivers
+        // --- Disable Depth Testing/Writing ---
+        depthTest: false,        // <<< SET TO false
+        depthWrite: false,       // <<< ENSURE false
+        // ------------------------------------
         transparent: true,
         opacity: 0.9,
         polygonOffset: true,     // Enable polygon offset
         polygonOffsetFactor: -1.0, // Push slightly "forward" (negative values push away from camera)
         polygonOffsetUnits: -1.0  // Additional offset based on depth slope
     });
-    // <<< END Add polygonOffset >>>
+    // <<< END Modify Boundary Material >>>
 
 
     const type = countryGeometry.type;
@@ -878,39 +911,37 @@ function highlightCountryBoundary(countryGeometry) {
     try {
         let linesAdded = 0;
         if (type === 'Polygon') {
-            // ... (process Polygon) ...
             const outerRingCoords = coordinates[0];
             const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
             if (points3D.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                // Use the SAME material instance for single Polygon
+                // Use the SAME material instance (already modified above)
                 const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial);
                 scene.add(lineLoop);
                 highlightedBoundaryLines.push(lineLoop);
                 linesAdded++;
-            } // ... else warn ...
+            } else { console.warn("[highlightCountryBoundary] Polygon: Not enough points (>= 2) to create line loop."); }
         } else if (type === 'MultiPolygon') {
-            // ... (process MultiPolygon) ...
             for (let i = 0; i < coordinates.length; i++) {
                 const polygon = coordinates[i];
                 const outerRingCoords = polygon[0];
                 const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
                 if (points3D.length >= 2) {
                     const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                    // Use CLONED material instance for MultiPolygon parts
-                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone()); // Clone material here
+                    // Use CLONED material instance. The properties from the original (depthTest:false etc.) will be cloned.
+                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone());
                     scene.add(lineLoop);
                     highlightedBoundaryLines.push(lineLoop);
                      linesAdded++;
-                } // ... else warn ...
+                } else { console.warn(`[highlightCountryBoundary] MultiPolygon part ${i}: Not enough points (>= 2) to create line loop.`); }
             }
-        } // ... else warn ...
+        } else { console.warn(`[highlightCountryBoundary] Unsupported geometry type: ${type}`); }
 
          console.log(`[highlightCountryBoundary] Highlighting finished. Total lines added: ${linesAdded}. Array length: ${highlightedBoundaryLines.length}`);
 
     } catch (error) {
          console.error("[highlightCountryBoundary] Error creating boundary highlight geometry:", error);
-         removeHighlightedBoundaries();
+         removeHighlightedBoundaries(); // Clean up if error occurs
     }
 }
 
@@ -938,116 +969,76 @@ function selectRandomCountry() {
 }
 
 async function startNewRound() {
+    // --- Log Function Start ---
+    console.log(">>> startNewRound: Function START.");
+
+    // --- REMOVE the targeted removal block from here ---
+    /*
+    console.log(">>> startNewRound: Targeted removal by custom property.");
+    try {
+        scene.children.slice().forEach(child => {
+            if (child.isTravelLine === true) {
+                // ... removal code ...
+            }
+        });
+        currentDistanceLine = null; // Ensure it's nulled
+        console.log(">>> startNewRound: Targeted objects removed and currentDistanceLine nulled.");
+    } catch (error) {
+        console.error(">>> startNewRound: Error during targeted removal:", error);
+    }
+    */
+    // --- END REMOVE ---
+
+    // --- Main Function Body ---
     console.log("Starting new round...");
-    console.log(`Start of Round - Initial Cam Pos: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}`);
-    console.log(`Start of Round - Initial Controls Target: ${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)}`);
+    // ... (stopping sounds) ...
 
-    // --- Stop Previous Sounds ---
-    stopSound('travelLine');
-    stopSound('correctGuess'); // Just in case
-    stopSound('incorrectGuess');
-    stopSound('scoreIncrease');
-    // Don't stop background music here unless intended
-    // ---------------------------
-
+    // --- Reset state flags and variables ---
     isLineAnimating = false;
     isCameraFollowing = false;
+    currentLineCurve = null;
+    currentDistanceLine = null; // <<< ENSURE currentDistanceLine is nulled here
+    console.log(">>> startNewRound: Nulled currentDistanceLine variable.");
+    // --- End Reset ---
 
-    // Ensure controls are enabled and target is reset
-    if (!controls.enabled) {
-        console.log("Controls were disabled, re-enabling in startNewRound.");
-        controls.enabled = true;
-    }
+
+    // Reset controls
+    // ...
     controls.target.set(0, 0, 0);
     controls.update();
 
     hideCountryInfoPanel();
     isGuessLocked = false;
-    // isScoreSoundPlaying = false; // <<< REMOVE THIS LINE
-    currentLineCurve = null;
 
-    // Remove previous visuals
+    // Remove other visuals
     removePin();
     removeTargetRings();
     removeHighlightedBoundaries();
-    if (currentDistanceLine) {
-        scene.remove(currentDistanceLine);
-        if(currentDistanceLine.geometry) currentDistanceLine.geometry.dispose();
-        if(currentDistanceLine.material) currentDistanceLine.material.dispose();
-        currentDistanceLine = null;
-    }
 
-    // Hide distance text
-    if (distanceTextSprite) {
-        distanceTextSprite.visible = false;
-    }
-    // Hide score text (already handled in animate loop check, but good to be explicit)
-    if (scoreSprite) {
-        scoreSprite.visible = false;
-    }
+    // Hide sprites
+    // ...
 
-    // Hide country label
-    if (countryLabelSprite) {
-        countryLabelSprite.visible = false;
-    }
+    // Select new country
+    // ...
 
-    // Ensure the country selection is always random:
-    currentCountry = selectRandomCountry();
-    console.log(`Starting random round. Selected country: ${currentCountry ? currentCountry.name : 'None'}`);
+    // Reset UI elements
+    // ...
 
-    if (!currentCountry) {
-        console.error("Failed to select new country in startNewRound.");
-        // const countryNameElement = document.getElementById('country-name'); // <<< Must be deleted or commented out
-        guessButton.disabled = true;
-        nextButton.disabled = true;
-        return;
-    }
+    // Check geometry
+    // ...
 
-    // const countryNameElement = document.getElementById('country-name'); // <<< Must be deleted or commented out
-    distanceElement.textContent = 'N/A';
+    // Reset animated score
+    // ...
 
-    // Check if geometry exists directly on the loaded data
-    if (!currentCountry.geometry || (currentCountry.geometry.type !== 'Polygon' && currentCountry.geometry.type !== 'MultiPolygon')) {
-         console.warn(`[startNewRound] No valid Polygon/MultiPolygon boundary geometry found for ${currentCountry.name} in the loaded data.`);
-    } else {
-        console.log(`[startNewRound] Found boundary geometry (${currentCountry.geometry.type}) for ${currentCountry.name}.`);
-    }
-
-    console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}.`);
-    console.log(`End of startNewRound setup - Controls Target: ${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)}`);
-
-    animatedScoreDisplayValue = 0;
-    if (scoreSprite) {
-        scoreSprite.visible = false;
-    }
-
-    // Re-enable the regular 'Next' button if it exists and is hidden
-    if (nextButton) nextButton.style.display = 'block';
-
-    hideCountryInfoPanel(); // This should already be called
-
-    // --- Force Disable Buttons and Log ---
-    if (guessButton) {
-        guessButton.disabled = true;
-        console.log(`startNewRound: guessButton.disabled set to ${guessButton.disabled}`); // <<< ADD LOG
-    } else {
-        console.warn("startNewRound: guessButton not found.");
-    }
-    if (nextButton) {
-        nextButton.disabled = true;
-        nextButton.style.display = 'block'; // Ensure visible but disabled
-        console.log(`startNewRound: nextButton.disabled set to ${nextButton.disabled}`); // <<< ADD LOG
-    } else {
-        console.warn("startNewRound: nextButton not found.");
-    }
-    // -------------------------------------
+    // Disable Buttons
+    // ...
 
     // Start the timer
-    startTimer();
+    // ...
 
-    // Display the country name
-    document.getElementById('country-name-display').innerText = currentCountry.name;
-    resetTimerDisplay();
+    console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}. Timer started.`);
+
+    // --- NO flag reset here (handled in listener) ---
 }
 
 function handleMapClick(event) {
@@ -1444,8 +1435,7 @@ async function handleGuessConfirm() {
     const endVec = targetCountryCenterVector.clone();
     const points = [];
     const numPoints = 50;
-    // <<< USE TARGET_RING_SURFACE_OFFSET for the line offset as well? Or define a new one? Let's use ring offset for consistency >>>
-    const lineOffset = TARGET_RING_SURFACE_OFFSET; // Align line height with rings
+    const lineOffset = TARGET_RING_SURFACE_OFFSET; // Use ring offset for consistency
 
     for (let i = 0; i <= numPoints; i++) {
         const t = i / numPoints;
@@ -1456,7 +1446,7 @@ async function handleGuessConfirm() {
 
     currentLineCurve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.1);
 
-    // --- Calculate Dynamic Duration for LINE ---\
+    // --- Calculate Dynamic Duration for LINE ---
     const curveLength = currentLineCurve.getLength();
     let duration = (curveLength / LINE_ANIMATION_SPEED) * 1000;
     currentAnimationDuration = Math.max(MIN_LINE_DURATION, Math.min(duration, MAX_LINE_DURATION));
@@ -1465,28 +1455,42 @@ async function handleGuessConfirm() {
     // --- Setup VISIBLE line geometry ---
     const curveGeometry = new THREE.BufferGeometry().setFromPoints(points);
 
-    // <<< ADD polygonOffset to the line material >>>
+    // <<< MODIFY Line Material >>>
     const curveMaterial = new THREE.LineBasicMaterial({
         color: LINE_AND_TARGET_COLOR,
-        linewidth: 2,
-        depthTest: true,        // Keep depth testing enabled
-        depthWrite: false,      // Keep depth write disabled
+        linewidth: 2, // Note: linewidth > 1 might not work on all platforms/drivers
+        // --- Disable Depth Testing/Writing ---
+        depthTest: false,        // <<< SET TO false
+        depthWrite: false,       // <<< ENSURE false
+        // ------------------------------------
         transparent: true,
         opacity: 0.9,
-        polygonOffset: true,     // Enable polygon offset
-        polygonOffsetFactor: -1.0, // Push slightly "forward"
-        polygonOffsetUnits: -1.0  // Additional offset
+        polygonOffset: true,     // Keep polygon offset
+        polygonOffsetFactor: -1.0,
+        polygonOffsetUnits: -1.0
     });
-    // <<< END Add polygonOffset >>>
+    // <<< END Modify Line Material >>>
 
 
+    // Remove old line if it somehow still exists (defensive)
     if (currentDistanceLine) {
-        // ... remove old line ...
+        console.warn(">>> handleGuessConfirm: Removing unexpected existing currentDistanceLine before creating new one.");
+        scene.remove(currentDistanceLine);
+        if (currentDistanceLine.geometry) currentDistanceLine.geometry.dispose();
+        if (currentDistanceLine.material) currentDistanceLine.material.dispose();
+        currentDistanceLine = null;
     }
+
     currentDistanceLine = new THREE.Line(curveGeometry, curveMaterial);
     currentDistanceLine.geometry.setDrawRange(0, 0);
+    currentDistanceLine.isTravelLine = true;
+    currentDistanceLine.visible = true;
     scene.add(currentDistanceLine);
     lineTotalPoints = points.length;
+
+    // --- ADD LOG HERE ---
+    console.log(">>> handleGuessConfirm: AFTER scene.add, currentDistanceLine =", currentDistanceLine);
+    // --------------------
 
     // Start Line Animation Timer
     lineAnimationStartTime = performance.now();
@@ -1539,6 +1543,17 @@ async function handleGuessConfirm() {
     score += currentRoundScore; // <<< PROBLEM LINE
     // scoreElement.textContent = totalScore; // <<< DELETE THIS LINE (or comment it out)
     document.getElementById('score-display').innerText = score; // <<< CORRECTED LINE
+
+    // --- Show Info Panel ---
+    if (infoPanelElement) {
+        console.log(">>> handleGuessConfirm: infoPanelElement found, attempting to show panel.");
+        showCountryInfoPanel(currentCountry);
+        infoPanelElement.classList.add('visible'); // <<< ADD THIS LINE
+        console.log(">>> handleGuessConfirm: showCountryInfoPanel called.");
+    } else {
+        console.warn(">>> handleGuessConfirm: infoPanelElement NOT found, cannot show panel.");
+    }
+    // --- End Show Info Panel ---
 } // <<< ADDED Closing brace for handleGuessConfirm function
 
 // --- Marker/Pin/Target Handling ---
@@ -1549,18 +1564,19 @@ function createOrUpdatePin(position) {
     const currentScale = getPinScale();
 
     if (!pinSprite) {
-        // <<< ADD polygonOffset to the pin material >>>
         const pinMaterial = new THREE.SpriteMaterial({
             map: null, // Start with no map
             color: PIN_COLOR_DEFAULT.clone(),
-            depthTest: true,        // Keep depth testing enabled
-            depthWrite: false,      // Keep depth write disabled (sprites often don't write depth)
+            // --- Disable Depth Testing/Writing ---
+            depthTest: false,        // <<< SET TO false
+            depthWrite: false,       // <<< ENSURE false
+            // ------------------------------------
             sizeAttenuation: false, // Keep pin size constant regardless of distance
-            polygonOffset: true,     // Enable polygon offset
-            polygonOffsetFactor: -2.0, // Push slightly more than lines, maybe? Adjust if needed.
+            polygonOffset: true,     // Keep polygon offset (might help self-sorting if needed)
+            polygonOffsetFactor: -2.0,
             polygonOffsetUnits: -2.0
         });
-        // <<< END Add polygonOffset >>>
+        // <<< END Material Modification >>>
 
 
         pinSprite = new THREE.Sprite(pinMaterial);
@@ -1592,7 +1608,7 @@ function createOrUpdatePin(position) {
 
     } else { // Pin already exists
         pinSprite.position.copy(position);
-        playSound('pinPlace');
+        // playSound('pinPlace'); // Consider if sound needed on move
     }
     // Update player guess coordinates
     playerGuess = getLatLonFromPoint(position);
@@ -1822,44 +1838,56 @@ function onPointerUp(event) {
 async function initGame() {
     console.log(">>> initGame: Starting game initialization...");
 
-    initMap();
-    setupEventListeners();
-    hideCountryInfoPanel();
+    initMap(); // Sets up scene, camera, renderer, controls
+    setupEventListeners(); // Sets up button listeners (including the new start button)
+    hideCountryInfoPanel(); // Keep this hidden initially
     initScoreDisplay();
     initDistanceDisplay();
-    initCountryLabelDisplay(); // <<< ADD THIS CALL
+    initCountryLabelDisplay();
     initShootingStars();
+
+    if (musicToggleCheckbox) {
+        backgroundMusicStarted = musicToggleCheckbox.checked;
+        console.log(`>>> initGame: Music toggle is initially ${backgroundMusicStarted ? 'checked' : 'unchecked'}.`);
+    } else {
+        console.warn(">>> initGame: musicToggleCheckbox not found.");
+    }
 
     console.log(">>> initGame: Preparing to load data and audio...");
     try {
-        await loadAudio();
-        console.log(">>> initGame: Audio loading process finished.");
+        // Load audio and data concurrently
+        await Promise.all([
+            loadAudio(),
+            loadCountryData(),
+            loadFactsData()
+        ]);
+        // --- ADD LOG AFTER SUCCESSFUL LOAD ---
+        console.log(">>> initGame: Promise.all COMPLETED successfully.");
+        console.log(`>>> initGame: countriesData length after load: ${countriesData.length}`);
+        // --- END ADD LOG ---
 
-    const dataPromises = [
-        loadCountryData(),
-        loadFactsData(),
-    ];
-        await Promise.all(dataPromises);
-        console.log(">>> initGame: All essential game data loaded.");
+        console.log(">>> initGame: All essential game data and audio loaded.");
+        console.log(">>> initGame: Waiting for user to click 'Start Game' button.");
 
-        // // <<< Start Background Music >>>
-        // if (sounds.backgroundMusic) {
-        //     console.log(">>> initGame: Starting background music...");
-        //     playSound('backgroundMusic'); // <<< DELETE OR COMMENT OUT THIS LINE
-        // } else {
-        //     console.warn(">>> initGame: Background music not loaded, cannot play.");
-        // }
-        // // <<< End Background Music Start >>>
-
-        if (countriesData.length > 0) {
-            console.log(">>> initGame: Attempting to start first round...");
-            startNewRound();
-            console.log(">>> initGame: startNewRound() called.");
-        } else {
-            // ... (error handling) ...
-        }
     } catch (error) {
-        // ... (error handling) ...
+        console.error(">>> initGame: Critical error during initialization:", error);
+        // Display a user-friendly error message
+         if (startModal && !startModal.classList.contains('hidden')) {
+            const modalContent = startModal.querySelector('.modal-content');
+             if (modalContent) {
+                const errorElement = document.createElement('p');
+                errorElement.textContent = 'Error loading game resources. Please refresh the page.';
+                errorElement.style.color = 'red';
+                errorElement.style.fontWeight = 'bold';
+                modalContent.appendChild(errorElement);
+             }
+         }
+         // --- ENSURE START BUTTON IS DISABLED ON ERROR ---
+         if(startGameButton) {
+            startGameButton.disabled = true;
+            console.error(">>> initGame: Start game button DISABLED due to initialization error.");
+         }
+         // --- END ENSURE ---
     }
     console.log(">>> initGame: Game initialization sequence complete.");
 }
@@ -1957,35 +1985,101 @@ function onPanelToggleClick(event) {
 // --- MODIFY setupEventListeners Function ---
 function setupEventListeners() {
     console.log("Setting up event listeners...");
+
+    // --- ADD START BUTTON LISTENER ---
+    console.log(">>> setupEventListeners: Checking startGameButton element:", startGameButton); // <<< ADD LOG 2
+    if (startGameButton) {
+        console.log(">>> setupEventListeners: startGameButton found. Adding click listener..."); // <<< ADD LOG 2.1
+        startGameButton.addEventListener('click', startGame); // Call the new startGame function
+        console.log(">>> setupEventListeners: Added click listener to startGameButton."); // <<< ADD LOG 2.2
+    } else {
+        console.warn(">>> setupEventListeners: startGameButton element NOT found, cannot add listener."); // <<< ADD LOG 2.3
+    }
+    // --- END ADD ---
+
     if (guessButton) {
+         // ... existing guessButton listener ...
          guessButton.addEventListener('click', () => {
-             tryStartBackgroundMusic();
-             playSound('buttonClick'); // <<< ADDED SOUND FOR GUESS BUTTON
-             handleGuessConfirm(); // Call original handler
+             tryStartBackgroundMusic(); // Ensure music check on interactions
+             playSound('buttonClick');
+             handleGuessConfirm();
          });
          console.log("Added listener to guessButton.");
-    } // ... else ...
+    } else {
+         console.warn("guessButton not found, cannot add listener.");
+    }
 
-    if (nextButton) {
-         nextButton.addEventListener('click', () => {
-             tryStartBackgroundMusic();
-             playSound('buttonClick'); // <<< ADDED SOUND FOR NEXT BUTTON
-             startNewRound(); // Call original handler
-         });
-         console.log("Added listener to nextButton.");
-    } // ... else ...
+    // --- Check if the listener already exists ---
+    if (nextButton && !nextButton.hasEventListener) {
+        // Make the listener async if startNewRound is async
+        nextButton.addEventListener('click', async () => {
+            console.log(">>> nextButton CLICKED! Starting handler logic."); // <<< ADD THIS LOG
 
+            // --- Debounce Check ---
+            if (isStartingNextRound) {
+                console.warn(">>> nextButton Click: Already processing a round start. Ignoring extra click.");
+                return; // Prevent multiple clicks firing simultaneously
+            }
+            isStartingNextRound = true; // Set flag immediately
+            console.log(">>> nextButton Click Handler: Set isStartingNextRound = true.");
+            // --- End Debounce Check ---
+
+            // --- MOVE LINE REMOVAL HERE ---
+            console.log(">>> nextButton Click Handler: Attempting targeted removal by custom property BEFORE calling startNewRound.");
+            try {
+                let lineRemoved = false;
+                scene.children.slice().forEach(child => {
+                    if (child.isTravelLine === true) {
+                        console.log(">>> nextButton Click Handler: Found travel line by custom property. Removing:", child);
+                        scene.remove(child);
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) child.material.dispose();
+                        console.log(">>> nextButton Click Handler: Object removed and disposed.");
+                        delete child.isTravelLine; // Clean up property
+                        lineRemoved = true;
+                    }
+                });
+                if (lineRemoved) {
+                    currentDistanceLine = null; // Nullify only if something was actually removed
+                    console.log(">>> nextButton Click Handler: Targeted objects removed and currentDistanceLine nulled.");
+    } else {
+                     console.log(">>> nextButton Click Handler: No travel line found by custom property to remove.");
+                     // Log currentDistanceLine state if nothing was found
+                     console.log(">>> nextButton Click Handler: currentDistanceLine value:", currentDistanceLine);
+                }
+            } catch (error) {
+                console.error(">>> nextButton Click Handler: Error during line removal:", error);
+                currentDistanceLine = null; // Still try to nullify on error
+            }
+            // --- END MOVE LINE REMOVAL ---
+
+            tryStartBackgroundMusic();
+            playSound('buttonClick');
+            // console.log(">>> nextButton Click Handler: BEFORE calling startNewRound, currentDistanceLine =", currentDistanceLine); // Log is less critical now
+
+            // Call startNewRound
+            await startNewRound();
+
+            // Reset flag AFTER startNewRound completes
+            isStartingNextRound = false;
+            console.log(">>> nextButton Click Handler: AFTER calling startNewRound, Reset isStartingNextRound = false.");
+
+        });
+        console.log("Added listener to nextButton.");
+        nextButton.hasEventListener = true;
+    } else {
+        console.warn("nextButton not found or listener already exists, cannot add listener.");
+    }
+
+    // ... (rest of listeners: cloud, shadow, map, etc.) ...
     if (cloudToggleCheckbox) {
          cloudToggleCheckbox.addEventListener('change', handleCloudToggle);
          console.log("Added listener to cloudToggleCheckbox.");
     } // ... else ...
-
     if (shadowToggleCheckbox) {
          shadowToggleCheckbox.addEventListener('change', handleShadowToggle);
          console.log("Added listener to shadowToggleCheckbox.");
     } // ... else ...
-
-    // Pointer/Map interaction listeners
     if (mapContainer) {
         mapContainer.addEventListener('pointerdown', onPointerDown, false);
         mapContainer.addEventListener('pointermove', onPointerMove, false);
@@ -1995,37 +2089,84 @@ function setupEventListeners() {
     } else {
         console.error("setupEventListeners: mapContainer not found, cannot add map interaction listeners.");
     }
-
     window.addEventListener('resize', onWindowResize);
     console.log("Added listener for window resize.");
-
-
     if (fullscreenButton) {
         fullscreenButton.addEventListener('click', () => {
-            tryStartBackgroundMusic(); // Keep this
+            tryStartBackgroundMusic();
             playSound('buttonClick');
-            toggleFullScreen(); // Call original handler
+            toggleFullScreen();
         });
         console.log("Added listener to fullscreenButton.");
     } // ... else ...
-
-     // Add resize listener for mobile panel height update
-     window.addEventListener('resize', () => { /* ... */ });
-     console.log("Added resize listener for mobile panel height update.");
-
-
-    // <<< ADD MUSIC TOGGLE LISTENER >>>
+    window.addEventListener('resize', () => { /* ... */ });
+    console.log("Added resize listener for mobile panel height update.");
     if (musicToggleCheckbox) {
-        // Set initial state based on flag (should be false -> music off)
         musicToggleCheckbox.checked = backgroundMusicStarted;
         musicToggleCheckbox.addEventListener('change', handleMusicToggle);
         console.log("Added listener to musicToggleCheckbox.");
     } else {
         console.warn("musicToggleCheckbox not found, cannot add listener.");
     }
-    // <<< END ADD >>>
-     console.log("Event listeners setup complete."); // <<< Moved log to end
+
+     console.log("Event listeners setup complete.");
 }
+
+
+// --- Ensure timer starts in startNewRound ---
+async function startNewRound() {
+    console.log("Starting new round...");
+    // ... (resetting sounds, flags, visuals) ...
+    isLineAnimating = false;
+    isCameraFollowing = false;
+
+    // Ensure controls are enabled and target is reset
+    if (!controls.enabled) {
+        console.log("Controls were disabled, re-enabling in startNewRound.");
+        controls.enabled = true;
+    }
+    controls.target.set(0, 0, 0);
+    controls.update(); // Update controls state
+
+    // ... (hiding panel, resetting guess state, removing visuals) ...
+    hideCountryInfoPanel();
+    isGuessLocked = false;
+    currentLineCurve = null;
+    removePin();
+    removeTargetRings();
+    removeHighlightedBoundaries();
+    if (currentDistanceLine) { /* ... remove line ... */ }
+    if (distanceTextSprite) distanceTextSprite.visible = false;
+    if (scoreSprite) scoreSprite.visible = false;
+    if (countryLabelSprite) countryLabelSprite.visible = false;
+
+
+    currentCountry = selectRandomCountry();
+    console.log(`Selected country: ${currentCountry ? currentCountry.name : 'None'}`);
+
+    if (!currentCountry) {
+        // ... (error handling) ...
+        return;
+    }
+
+    // ... (update UI elements like distance) ...
+    distanceElement.textContent = 'N/A';
+    document.getElementById('country-name-display').innerText = currentCountry.name;
+    resetTimerDisplay(); // Reset timer display text
+
+    // --- START THE TIMER ---
+    startTimer(); // <<< THIS IS WHERE THE TIMER BEGINS FOR THE ROUND
+    // ---------------------
+
+    // --- Disable Buttons ---
+    if (guessButton) guessButton.disabled = true;
+    if (nextButton) nextButton.disabled = true;
+    if (nextButton) nextButton.style.display = 'block'; // Ensure visible but disabled
+
+    console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}. Timer started.`);
+}
+
+// ... (rest of script.js) ...
 
 // --- MODIFY showCountryInfoPanel Function (Minor adjustment) ---
 function showCountryInfoPanel(country) {
@@ -2117,72 +2258,6 @@ function hideCountryInfoPanel() {
 // ADD the listener reliably
 window.addEventListener('load', initGame);
 
-// --- Add Event Listener Setup --- MOVED DEFINITION EARLIER
-function setupEventListeners() {
-    console.log("Setting up event listeners..."); // <<< Added log
-    if (guessButton) {
-         guessButton.addEventListener('click', handleGuessConfirm);
-         console.log("Added listener to guessButton.");
-    } else {
-         console.warn("guessButton not found, cannot add listener.");
-    }
-
-    if (nextButton) {
-         nextButton.addEventListener('click', startNewRound);
-         console.log("Added listener to nextButton.");
-    } else {
-         console.warn("nextButton not found, cannot add listener.");
-    }
-
-    if (cloudToggleCheckbox) {
-         cloudToggleCheckbox.addEventListener('change', handleCloudToggle);
-         console.log("Added listener to cloudToggleCheckbox.");
-    } else {
-         console.warn("cloudToggleCheckbox not found, cannot add listener.");
-    }
-
-    if (shadowToggleCheckbox) {
-         shadowToggleCheckbox.addEventListener('change', handleShadowToggle);
-         console.log("Added listener to shadowToggleCheckbox.");
-    } else {
-         console.warn("shadowToggleCheckbox not found, cannot add listener.");
-    }
-
-    // Pointer/Map interaction listeners
-    if (mapContainer) {
-        mapContainer.addEventListener('pointerdown', onPointerDown, false);
-        mapContainer.addEventListener('pointermove', onPointerMove, false);
-        mapContainer.addEventListener('pointerup', onPointerUp, false);
-        mapContainer.addEventListener('pointerleave', onPointerUp, false);
-        console.log("Added map interaction listeners to mapContainer.");
-    } else {
-        console.error("setupEventListeners: mapContainer not found, cannot add map interaction listeners.");
-    }
-
-    window.addEventListener('resize', onWindowResize);
-    console.log("Added listener for window resize.");
-    console.log("Event listeners setup complete."); // <<< Added log
-
-    // <<< ADD fullscreen button listener >>>
-    if (fullscreenButton) {
-        fullscreenButton.addEventListener('click', toggleFullScreen);
-        console.log("Added listener to fullscreenButton.");
-    } else {
-        console.warn("fullscreenButton not found, cannot add listener.");
-    }
-    // <<< END ADD >>>
-
-    // <<< ADD MUSIC TOGGLE LISTENER >>>
-    if (musicToggleCheckbox) {
-        // Set initial state based on flag (should be false -> music off)
-        musicToggleCheckbox.checked = backgroundMusicStarted;
-        musicToggleCheckbox.addEventListener('change', handleMusicToggle);
-        console.log("Added listener to musicToggleCheckbox.");
-    } else {
-        console.warn("musicToggleCheckbox not found, cannot add listener.");
-    }
-    // <<< END ADD >>>
-}
 
 // ... (Point-in-Polygon Logic) ...
 function isPointInCountry(pointCoords, countryGeometry) {
@@ -2379,14 +2454,11 @@ const audioFiles = {
 // ... (loadAudio, playSound, stopSound) ...
 
 function tryStartBackgroundMusic() {
-    // <<< ADD CHECK FOR TOGGLE STATE >>>
-    if (!backgroundMusicStarted && isAudioLoaded && sounds.backgroundMusic && musicToggleCheckbox && musicToggleCheckbox.checked) {
-        console.log("First user interaction detected & music toggle ON, trying to start background music...");
-        playSound('backgroundMusic');
-        backgroundMusicStarted = true; // Set flag so it only tries once
-    } else if (!backgroundMusicStarted && musicToggleCheckbox && !musicToggleCheckbox.checked) {
-         console.log("First user interaction detected, but music toggle is OFF.");
-         backgroundMusicStarted = true; // Still set flag to prevent repeated checks, but don't play.
+    // <<< REMOVE CHECK FOR TOGGLE STATE and playSound call >>>
+    // Only set the flag if it hasn't been set yet, regardless of toggle state
+    if (!backgroundMusicStarted) {
+        console.log("First user interaction detected. Music start will be handled by startGame or toggle.");
+        backgroundMusicStarted = true; // Set flag to prevent repeated checks, actual playback happens elsewhere.
     }
 }
 // --- End Audio Functions ---
@@ -2396,24 +2468,28 @@ function tryStartBackgroundMusic() {
 // --- Handler function for the music toggle ---
 function handleMusicToggle(event) {
     const musicEnabled = event.target.checked;
+
     if (musicEnabled) {
-        // Try to play only if the music is loaded and hasn't been prevented by autoplay yet
-        if (isAudioLoaded && sounds.backgroundMusic && sounds.backgroundMusic.paused) {
-             console.log("Music toggle ON - attempting to play background music.");
-             tryStartBackgroundMusic(); // Use this to handle the initial play logic
+        // --- Directly attempt to play when toggled ON ---
+        if (isAudioLoaded && sounds.backgroundMusic) {
+            console.log("Music toggle ON - attempting to play/resume background music via playSound.");
+            playSound('backgroundMusic'); // Use playSound which handles errors/state
+            backgroundMusicStarted = true; // Keep flag consistent
         } else {
-             console.log("Music toggle ON - music already playing or not loaded.");
+            console.log("Music toggle ON - music not loaded yet.");
         }
     } else {
-        // Pause if music is loaded and currently playing
+        // --- Pause when toggled OFF ---
         if (isAudioLoaded && sounds.backgroundMusic && !sounds.backgroundMusic.paused) {
             console.log("Music toggle OFF - pausing background music.");
             sounds.backgroundMusic.pause(); // Directly pause here
+            backgroundMusicStarted = false; // Reflect that it's intentionally stopped
         } else {
-             console.log("Music toggle OFF - music already paused or not loaded.");
+            console.log("Music toggle OFF - music already paused or not loaded.");
         }
     }
 }
+// --- End Handler ---
 
 // --- Point-in-Polygon Logic ---
 // ...
@@ -2459,16 +2535,24 @@ function initCountryLabelDisplay() {
     });
 
     countryLabelSprite = new THREE.Sprite(labelMaterial);
-    // Adjust scale based on canvas aspect ratio
+
+    // <<< START MODIFICATION: Apply conditional scale >>>
+    const isMobile = window.innerWidth <= 768;
+    const baseScaleX = isMobile ? COUNTRY_LABEL_SPRITE_SCALE_MOBILE : COUNTRY_LABEL_SPRITE_SCALE;
+    const baseScaleY = baseScaleX * (COUNTRY_LABEL_CANVAS_HEIGHT / COUNTRY_LABEL_CANVAS_WIDTH); // Maintain aspect ratio based on canvas dimensions
+
+    // Set scale based on device type
     countryLabelSprite.scale.set(
-        COUNTRY_LABEL_SPRITE_SCALE,
-        COUNTRY_LABEL_SPRITE_SCALE * (COUNTRY_LABEL_CANVAS_HEIGHT / COUNTRY_LABEL_CANVAS_WIDTH),
-        1
+        baseScaleX,
+        baseScaleY,
+        1 // Z scale remains 1
     );
+    // <<< END MODIFICATION >>>
+
     countryLabelSprite.position.set(0, 10000, 0); // Start hidden
     countryLabelSprite.visible = false;
     scene.add(countryLabelSprite);
-    console.log("Country label display initialized (sprite added)."); // Modified log
+    console.log(`Country label display initialized (sprite added). Mobile: ${isMobile}, ScaleX: ${baseScaleX.toFixed(2)}`); // Modified log
 }
 
 // --- Function to Update and Show Country Label ---
@@ -2483,9 +2567,35 @@ function updateCountryLabel(countryName, centerVector) {
         return;
     }
 
-    // Clear canvas and draw text
+    // Clear canvas
     countryLabelContext.clearRect(0, 0, countryLabelCanvas.width, countryLabelCanvas.height);
+
+    // --- START DYNAMIC FONT SIZE LOGIC ---
+    let fontSize = COUNTRY_LABEL_FONT_SIZE; // Start with default size
+    const minFontSize = 18; // Minimum acceptable font size
+    const padding = 20; // Horizontal padding within canvas
+    const maxWidth = countryLabelCanvas.width - padding;
+
+    countryLabelContext.font = `bold ${fontSize}px Arial`; // Set initial font for measurement
+    let textMetrics = countryLabelContext.measureText(countryName);
+    let textWidth = textMetrics.width;
+
+    // Reduce font size until it fits or hits the minimum
+    while (textWidth > maxWidth && fontSize > minFontSize) {
+        fontSize--;
+        countryLabelContext.font = `bold ${fontSize}px Arial`;
+        textMetrics = countryLabelContext.measureText(countryName);
+        textWidth = textMetrics.width;
+        console.log(`Reduced country label font size to ${fontSize}px for "${countryName}"`); // Log reduction
+    }
+    // --- END DYNAMIC FONT SIZE LOGIC ---
+
+    // Set final style and draw text
+    countryLabelContext.fillStyle = COUNTRY_LABEL_COLOR;
+    countryLabelContext.textAlign = 'center';
+    countryLabelContext.textBaseline = 'middle';
     countryLabelContext.fillText(countryName, countryLabelCanvas.width / 2, countryLabelCanvas.height / 2);
+
     countryLabelTexture.needsUpdate = true;
 
     // Calculate position radially above the center vector
@@ -2495,7 +2605,7 @@ function updateCountryLabel(countryName, centerVector) {
 
     countryLabelSprite.position.copy(labelPosition);
     countryLabelSprite.visible = true;
-    console.log(`Displaying country label "${countryName}"`);
+    console.log(`Displaying country label "${countryName}" with font size ${fontSize}px`); // Log final size
 }
 
 // ... rest of the script ...
@@ -2605,3 +2715,106 @@ function resetTimerDisplay() {
 window.addEventListener('beforeunload', () => {
     clearInterval(timerInterval);
 });
+
+function setupCameraCollision() {
+    if (controls) {
+        // Define angle limits (in radians)
+        const minPolarAngle = 0.1; // radians - prevent looking directly down
+        const maxPolarAngle = Math.PI * 0.9; // radians - prevent looking directly up
+        const minAzimuthAngle = -Infinity; // radians - allow full horizontal rotation
+        const maxAzimuthAngle = Infinity; // radians - allow full horizontal rotation
+
+        controls.minPolarAngle = minPolarAngle;
+        controls.maxPolarAngle = maxPolarAngle;
+        controls.minAzimuthAngle = minAzimuthAngle;
+        controls.maxAzimuthAngle = maxAzimuthAngle;
+    }
+}
+
+// Call this function after you initialize your OrbitControls and globe
+function init() {
+  // ... existing code ...
+
+  // Make sure 'globe' is defined and is your THREE.Mesh object
+  globe = createGlobe(); // Or however you create your globe mesh
+
+  setupCameraCollision();
+}
+
+// --- NEW FUNCTION TO START THE GAME ---
+function startGame() {
+    console.log(">>> startGame function successfully called!");
+    console.log(">>> startGame: Start button clicked!");
+
+    // --- ADD CLASS TO BODY TO REMOVE BLUR ---
+    document.body.classList.add('game-active');
+    console.log(">>> startGame: Added 'game-active' class to body.");
+    // --- END ADD CLASS ---
+
+    if (startModal) {
+        startModal.classList.add('hidden'); // Hide the modal using the CSS class
+        console.log(">>> startGame: Start modal hidden.");
+    } else {
+        console.warn(">>> startGame: Start modal element not found.");
+    }
+
+    // --- SHOW LEFT PANEL ---
+    if (leftPanelElement) {
+        leftPanelElement.style.display = 'flex'; // Set display back to flex
+        console.log(">>> startGame: Left panel displayed.");
+    } else {
+        console.warn(">>> startGame: Left panel element not found.");
+    }
+    // --- END SHOW LEFT PANEL ---
+
+    // --- AUTO-FULLSCREEN ON MOBILE ---
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+        console.log(">>> startGame: Mobile detected, attempting to go fullscreen.");
+        toggleFullScreen(); // Call the fullscreen function
+    } else {
+        console.log(">>> startGame: Not mobile, skipping fullscreen.");
+    }
+    // --- END AUTO-FULLSCREEN ---
+
+    // Now actually start the first round
+    if (countriesData.length > 0) {
+        console.log(">>> startGame: Attempting to start first round...");
+        startNewRound(); // This will handle country selection, timer start, etc.
+        console.log(">>> startGame: startNewRound() called.");
+
+        // --- START MUSIC IF TOGGLED ON ---
+        if (isAudioLoaded && sounds.backgroundMusic && musicToggleCheckbox && musicToggleCheckbox.checked) {
+            console.log(">>> startGame: Music toggle is ON. Attempting to play background music.");
+            playSound('backgroundMusic');
+            backgroundMusicStarted = true; // Ensure flag is set now that we've tried to play
+        } else {
+            console.log(">>> startGame: Music toggle is OFF or music not ready. Background music not started.");
+            backgroundMusicStarted = true; // Still set flag to prevent other interactions from trying
+        }
+        // -----------------------------
+
+        // --- START MOBILE CAMERA ADJUSTMENT ---
+        // ... (mobile camera logic remains the same) ...
+        if (isMobile) {
+            console.log(">>> startGame: Mobile detected, adjusting initial camera position and target.");
+            const mobileZoom = 12;
+            camera.position.set(0, 0, mobileZoom);
+            const targetOffsetY = -0.8;
+            controls.target.set(0, targetOffsetY, 0);
+            controls.update();
+            console.log(`>>> startGame: Camera pos: (0, 0, ${camera.position.z.toFixed(1)}), Target: (0, ${controls.target.y.toFixed(1)}, 0)`);
+        }
+        // --- END MOBILE CAMERA ADJUSTMENT ---
+
+    } else {
+        console.error(">>> startGame: Cannot start round, country data not loaded.");
+        // Handle error appropriately - maybe show an error message
+    }
+}
+// --- END NEW FUNCTION ---
+
+const MOBILE_INITIAL_ZOOM = 14; // Or similar value
+const MOBILE_TARGET_OFFSET_Y = -1.0; // Or similar value
+const MOBILE_FINAL_ZOOM = 12; // Or similar value
+const MOBILE_MIN_DISTANCE_AFTER_GUESS = 7; // Or similar value
