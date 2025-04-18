@@ -3,8 +3,6 @@ console.log(">>> script.js: File loaded, starting execution..."); // <<< ADDED V
 const EARTH_RADIUS = 5;
 
 // --- DOM Elements ---
-const countryNameElement = document.getElementById('country-name');
-const scoreElement = document.getElementById('score');
 const distanceElement = document.getElementById('distance');
 const mapContainer = document.getElementById('map-container');
 const guessButton = document.getElementById('guess-button');
@@ -51,6 +49,7 @@ let blendedQuat = new THREE.Quaternion();
 let currentRoundScore = 0;
 let animatedScoreDisplayValue = 0;
 let backgroundMusicStarted = false; // <<< ADDED FLAG
+// let isScoreSoundPlaying = false; // <<< ADD THIS FLAG
 
 // --- Three.js Variables ---
 let scene, camera, renderer, globe, controls, raycaster, mouse;
@@ -67,6 +66,12 @@ let distanceCanvas = null;
 let distanceContext = null;
 let distanceTexture = null;
 let distanceTextSprite = null;
+// <<< ADD: Variables for country label display >>>
+let countryLabelCanvas = null;
+let countryLabelContext = null;
+let countryLabelTexture = null;
+let countryLabelSprite = null;
+// --- End Add ---
 let lensflare = null; // <<< ADDED: Variable for lens flare
 // --- MOVED Shooting Star Variables ---
 let shootingStars = []; // Array to hold shooting star data ({mesh, velocity, active})
@@ -81,7 +86,9 @@ const PIN_SCALE_DEFAULT = 0.05;
 const PIN_SCALE_HOVER = 0.06;
 const PIN_SCALE_MOBILE = 0.08; // <-- New constant for mobile size
 const PIN_IMAGE_PATH = 'assets/pin.svg';
-const PIN_OFFSET = 0.05; // <<< CHANGED: Significantly reduce pin offset
+const PIN_OFFSET = 0.05; // Offset for the base of the pin marker
+// <<< ADD: Separate offset for target rings >>>
+const TARGET_RING_SURFACE_OFFSET = 0.03; // <<< NEW: Smaller value (e.g., 0.03) to be closer to surface
 const TARGET_RING_COLOR = 0x00ff00; // Green rings
 const NUM_TARGET_RINGS = 4;       // How many rings in the pulse effect
 const TARGET_RING_MAX_SCALE = 0.4; // Max size the rings expand to (adjust)
@@ -114,6 +121,14 @@ const SHOOTING_STAR_LENGTH = 2; // Length of the star streak
 const SHOOTING_STAR_SPAWN_RADIUS = STARFIELD_RADIUS * 1.1; // Radius where stars spawn
 const SHOOTING_STAR_DESPAWN_RADIUS_SQ = (STARFIELD_RADIUS * 1.3) ** 2; // Squared radius for despawn check
 const SHOOTING_STAR_SPAWN_CHANCE = 0.003; // Chance per frame to spawn a star
+// <<< ADD: Constants for Country Label >>>
+const COUNTRY_LABEL_OFFSET = 0.2;      // <<< INCREASED (e.g., from 0.3) to position higher
+const COUNTRY_LABEL_FONT_SIZE = 56;    // <<< INCREASED (e.g., from 36) for bigger text
+const COUNTRY_LABEL_COLOR = '#ffffff';   // White text
+const COUNTRY_LABEL_CANVAS_WIDTH = 512;  // <<< INCREASED (e.g., from 384) for wider text space
+const COUNTRY_LABEL_CANVAS_HEIGHT = 96; // <<< INCREASED (e.g., from 64) for taller text space
+const COUNTRY_LABEL_SPRITE_SCALE = 1.8;  // <<< INCREASED (e.g., from 1.0) for larger overall sprite
+// --- End Add ---
 
 // --- PIN CONSTANTS (Ensure these are here and defined) ---
 const PIN_COLOR_DEFAULT = new THREE.Color(0xff0000);
@@ -323,12 +338,13 @@ function initMap() {
         normalMap: normalTexture, // Normal map
         roughnessMap: roughnessTexture, // Roughness map
         displacementMap: displacementTexture, // Displacement map
-        displacementScale: 0.2, // Adjust this value for more height definition
+        displacementScale: 0.2, // <<< KEEP THIS VALUE (maximum terrain height)
     });
     // --- End Modify Material ---
 
     globe = new THREE.Mesh(globeGeometry, globeMaterial);
     globe.receiveShadow = true;
+    // globe.renderOrder = 1; // <<< REMOVE THIS (likely not needed)
     scene.add(globe);
 
     // --- Cloud Layer ---
@@ -356,6 +372,7 @@ function initMap() {
         // --- Clouds Can Cast Shadows (optional, can be expensive) ---
         // cloudMesh.castShadow = true;
         cloudMesh.visible = cloudToggleCheckbox.checked;
+        cloudMesh.renderOrder = 2; // <<< SET RENDER ORDER FOR CLOUD
         scene.add(cloudMesh);
         console.log(`Cloud layer added. Initial visibility: ${cloudMesh.visible}`);
     } catch (error) {
@@ -449,6 +466,37 @@ function initMap() {
     animate();
 
     console.log("Map initialized with displacement map.");
+
+    // --- Country Label Sprite ---
+    countryLabelCanvas = document.createElement('canvas');
+    // ... (set canvas size, get context) ...
+    countryLabelTexture = new THREE.CanvasTexture(countryLabelCanvas);
+    const countryLabelMaterial = new THREE.SpriteMaterial({
+        map: countryLabelTexture,
+        transparent: true,
+        depthTest: false // <<< ADD THIS
+    });
+    countryLabelSprite = new THREE.Sprite(countryLabelMaterial);
+    countryLabelSprite.scale.set(1.5, 0.75, 1.0);
+    countryLabelSprite.position.set(0, EARTH_RADIUS + 0.5, 0);
+    countryLabelSprite.visible = false;
+    // countryLabelSprite.renderOrder = 4; // <<< REMOVE THIS
+    scene.add(countryLabelSprite);
+
+    // --- Score Sprite ---
+    scoreCanvas = document.createElement('canvas');
+    // ... (set canvas size, get context) ...
+    scoreTexture = new THREE.CanvasTexture(scoreCanvas);
+    const scoreMaterial = new THREE.SpriteMaterial({
+        map: scoreTexture,
+        transparent: true,
+        depthTest: false // <<< ADD THIS
+    });
+    scoreSprite = new THREE.Sprite(scoreMaterial);
+    scoreSprite.scale.set(0.5, 0.25, 1.0);
+    scoreSprite.visible = false;
+    // scoreSprite.renderOrder = 5; // <<< REMOVE THIS
+    scene.add(scoreSprite);
 }
 
 function onWindowResize() {
@@ -598,6 +646,7 @@ function animate() {
     // --- End Shooting Star Logic ---
 
     if (isLineAnimating) {
+        const now = performance.now(); // Ensure 'now' is defined if used here
         const lineElapsedTime = now - lineAnimationStartTime;
         const progress = Math.min(lineElapsedTime / currentAnimationDuration, 1.0);
 
@@ -617,39 +666,31 @@ function animate() {
                 const scoreSpritePosition = currentCurvePos.clone()
                     .addScaledVector(surfaceNormal, SCORE_OFFSET_ABOVE_LINE + upOffset);
 
-                // Animate Score Value
                 const targetScore = progress * currentRoundScore;
                 animatedScoreDisplayValue = THREE.MathUtils.lerp(animatedScoreDisplayValue, targetScore, 0.08);
 
-                // Update Canvas Text
                 scoreCanvasContext.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
                 scoreCanvasContext.fillText(`+${Math.round(animatedScoreDisplayValue)}`, scoreCanvas.width / 2, scoreCanvas.height / 2);
                 scoreTexture.needsUpdate = true;
 
-                // Update Sprite Position
                 scoreSprite.position.copy(scoreSpritePosition);
                 scoreSprite.visible = true;
-            } else {
-                 // Ensure final score is shown briefly if lerp didn't quite reach
+
+            } else { // progress >= 1.0 (final frame drawing)
                  if (scoreSprite.visible) {
                      scoreCanvasContext.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
                      scoreCanvasContext.fillText(`+${currentRoundScore}`, scoreCanvas.width / 2, scoreCanvas.height / 2);
                      scoreTexture.needsUpdate = true;
-                     // Keep position from last frame
                  }
-                 // Hide slightly after finishing (handled in progress >= 1.0 check)
             }
         }
         // --- End Score Sprite Animation ---
 
-        // --- Animation End Handling (MOVED INSIDE isLineAnimating block) ---
+            // --- Animation End Handling ---
         if (progress >= 1.0) {
-            isLineAnimating = false; // Stop line animation flag
-            stopSound('travelLine'); // Stop the travel line sound
-
-            // Hide score sprite shortly after animation ends
-            if (scoreSprite) setTimeout(() => { scoreSprite.visible = false; }, 100); // Hide after 100ms delay
-
+            isLineAnimating = false;
+            stopSound('travelLine');
+            if (scoreSprite) setTimeout(() => { scoreSprite.visible = false; }, 100);
             console.log("Line animation finished.");
             if (isCameraFollowing) {
                 isCameraFollowing = false; // Stop glide
@@ -675,6 +716,12 @@ function animate() {
 
             createTargetRings();
 
+            // <<< SHOW COUNTRY LABEL >>>
+            if (currentCountry && targetCountryCenterVector.lengthSq() > 0.01) {
+                updateCountryLabel(currentCountry.name, targetCountryCenterVector);
+            }
+            // <<< END SHOW COUNTRY LABEL >>>
+
             // --- Debugging showCountryInfoPanel call ---
             console.log("Attempting to call showCountryInfoPanel...");
             console.log("Is currentCountry valid before call?", currentCountry);
@@ -696,14 +743,8 @@ function animate() {
                  console.warn("animate (end): nextButton not found to enable.");
             }
             // -------------------------
-
-            // --- Play Score Increase Sound ---
-            if (currentRoundScore > 0) { // Only play if score was added
-               playSound('scoreIncrease');
-            }
-            // --------------------------------
-        } // <<< Closing brace for 'if (progress >= 1.0)' block
-    } // <<< MOVED Closing brace for 'if (isLineAnimating)' block here
+        } // End if (progress >= 1.0)
+    } // End if (isLineAnimating)
 
     // The animate function loop continues here, rendering the scene
     renderer.render(scene, camera);
@@ -762,8 +803,7 @@ async function loadCountryData() {
 
     } catch (error) {
         console.error("Failed to load or parse country shapes data:", error); // Log the actual error
-        countryNameElement.textContent = "Error loading countries!";
-        countriesData = [];
+        // const countryNameElement = document.getElementById('country-name'); // <<< Must be deleted or commented out
          if (guessButton) guessButton.disabled = true;
          if (nextButton) nextButton.disabled = true;
     }
@@ -813,65 +853,59 @@ function highlightCountryBoundary(countryGeometry) {
     }
     removeHighlightedBoundaries(); // Call cleanup first
 
-    // <<< INCREASED Offset FURTHER >>>
-    const boundaryOffset = 0.05; // Increased from 0.01 to account for displacement
+    const boundaryOffset = 0.05; // Keep the existing radial offset
 
+    // <<< ADD polygonOffset properties to the material >>>
     const boundaryMaterial = new THREE.LineBasicMaterial({
         color: LINE_AND_TARGET_COLOR, // Yellow
         linewidth: 1.5,
-        depthTest: true,
-        depthWrite: false,
+        depthTest: true,        // Keep depth testing enabled
+        depthWrite: false,       // Keep depth write disabled
         transparent: true,
         opacity: 0.9,
+        polygonOffset: true,     // Enable polygon offset
+        polygonOffsetFactor: -1.0, // Push slightly "forward" (negative values push away from camera)
+        polygonOffsetUnits: -1.0  // Additional offset based on depth slope
     });
+    // <<< END Add polygonOffset >>>
+
 
     const type = countryGeometry.type;
     const coordinates = countryGeometry.coordinates;
 
-    console.log(`[highlightCountryBoundary] Geometry type: ${type}, Offset: ${boundaryOffset}`); // Log offset
+    console.log(`[highlightCountryBoundary] Geometry type: ${type}, Offset: ${boundaryOffset}`);
 
     try {
         let linesAdded = 0;
         if (type === 'Polygon') {
+            // ... (process Polygon) ...
             const outerRingCoords = coordinates[0];
-            console.log(`[highlightCountryBoundary] Processing Polygon with ${outerRingCoords.length} coordinates.`);
-            const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use updated offset
-            console.log(`[highlightCountryBoundary] Converted Polygon to ${points3D.length} 3D points (first 5):`, points3D.slice(0, 5));
-
+            const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
             if (points3D.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
+                // Use the SAME material instance for single Polygon
                 const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial);
                 scene.add(lineLoop);
-                console.log("[highlightCountryBoundary] Added Polygon LineLoop to scene.");
                 highlightedBoundaryLines.push(lineLoop);
                 linesAdded++;
-            } else {
-                 console.warn("[highlightCountryBoundary] Not enough valid points for Polygon boundary.");
-            }
-
+            } // ... else warn ...
         } else if (type === 'MultiPolygon') {
-            console.log(`[highlightCountryBoundary] Processing MultiPolygon with ${coordinates.length} parts.`);
+            // ... (process MultiPolygon) ...
             for (let i = 0; i < coordinates.length; i++) {
                 const polygon = coordinates[i];
                 const outerRingCoords = polygon[0];
-                 console.log(`[highlightCountryBoundary]   Part ${i}: ${outerRingCoords.length} coordinates.`);
-                const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset); // Use updated offset
-                 console.log(`[highlightCountryBoundary]   Part ${i}: Converted to ${points3D.length} 3D points (first 5):`, points3D.slice(0, 5));
-
+                const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
                 if (points3D.length >= 2) {
                     const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone());
+                    // Use CLONED material instance for MultiPolygon parts
+                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone()); // Clone material here
                     scene.add(lineLoop);
-                     console.log(`[highlightCountryBoundary] Added MultiPolygon LineLoop (Part ${i}) to scene.`);
                     highlightedBoundaryLines.push(lineLoop);
                      linesAdded++;
-                } else {
-                     console.warn(`[highlightCountryBoundary] Not enough valid points for MultiPolygon part ${i}.`);
-                }
+                } // ... else warn ...
             }
-        } else {
-            console.warn(`[highlightCountryBoundary] Cannot highlight boundary: Unsupported geometry type "${type}"`);
-        }
+        } // ... else warn ...
+
          console.log(`[highlightCountryBoundary] Highlighting finished. Total lines added: ${linesAdded}. Array length: ${highlightedBoundaryLines.length}`);
 
     } catch (error) {
@@ -929,6 +963,7 @@ async function startNewRound() {
 
     hideCountryInfoPanel();
     isGuessLocked = false;
+    // isScoreSoundPlaying = false; // <<< REMOVE THIS LINE
     currentLineCurve = null;
 
     // Remove previous visuals
@@ -951,19 +986,24 @@ async function startNewRound() {
         scoreSprite.visible = false;
     }
 
+    // Hide country label
+    if (countryLabelSprite) {
+        countryLabelSprite.visible = false;
+    }
+
     // Ensure the country selection is always random:
     currentCountry = selectRandomCountry();
     console.log(`Starting random round. Selected country: ${currentCountry ? currentCountry.name : 'None'}`);
 
     if (!currentCountry) {
         console.error("Failed to select new country in startNewRound.");
-        countryNameElement.textContent = "Error! Reload?";
+        // const countryNameElement = document.getElementById('country-name'); // <<< Must be deleted or commented out
         guessButton.disabled = true;
         nextButton.disabled = true;
         return;
     }
 
-    countryNameElement.textContent = currentCountry.name;
+    // const countryNameElement = document.getElementById('country-name'); // <<< Must be deleted or commented out
     distanceElement.textContent = 'N/A';
 
     // Check if geometry exists directly on the loaded data
@@ -1001,7 +1041,14 @@ async function startNewRound() {
         console.warn("startNewRound: nextButton not found.");
     }
     // -------------------------------------
-} // <<< ADDED Closing brace for startNewRound function
+
+    // Start the timer
+    startTimer();
+
+    // Display the country name
+    document.getElementById('country-name-display').innerText = currentCountry.name;
+    resetTimerDisplay();
+}
 
 function handleMapClick(event) {
     console.log("handleMapClick fired!");
@@ -1364,8 +1411,8 @@ async function handleGuessConfirm() {
     // --- END SCORING LOGIC ---
 
     // Update total score and UI
-    score += roundScore;
-    scoreElement.textContent = score;
+    score += currentRoundScore; // <<< CORRECTED LINE
+
     distanceElement.textContent = distance !== null ? `${distance}` : 'Error';
 
     // Display Distance Text Above Pin
@@ -1392,22 +1439,21 @@ async function handleGuessConfirm() {
     console.log(`Distance: ${distance} km, Score: ${roundScore}`);
 
 
-    // --- Draw distance line AND Prepare Curve (Uses calculated targetCountryCenterVector) ---
-    // This part remains the same as it already uses targetCountryCenterVector
+    // --- Draw distance line AND Prepare Curve ---
     const startVec = pinSprite.position.clone().normalize().multiplyScalar(EARTH_RADIUS);
     const endVec = targetCountryCenterVector.clone();
     const points = [];
     const numPoints = 50;
-    const arcOffset = DISTANCE_LINE_OFFSET;
+    // <<< USE TARGET_RING_SURFACE_OFFSET for the line offset as well? Or define a new one? Let's use ring offset for consistency >>>
+    const lineOffset = TARGET_RING_SURFACE_OFFSET; // Align line height with rings
 
     for (let i = 0; i <= numPoints; i++) {
         const t = i / numPoints;
         const intermediateVec = new THREE.Vector3().lerpVectors(startVec, endVec, t).normalize();
-        intermediateVec.multiplyScalar(EARTH_RADIUS + arcOffset);
+        intermediateVec.multiplyScalar(EARTH_RADIUS + lineOffset); // Use calculated offset
         points.push(intermediateVec);
     }
 
-    // --- Create the smooth curve for animation path ---\
     currentLineCurve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.1);
 
     // --- Calculate Dynamic Duration for LINE ---\
@@ -1416,16 +1462,26 @@ async function handleGuessConfirm() {
     currentAnimationDuration = Math.max(MIN_LINE_DURATION, Math.min(duration, MAX_LINE_DURATION));
     console.log(`Line Curve Length: ${curveLength.toFixed(2)}, Calculated Duration: ${duration.toFixed(0)}ms, Clamped Duration: ${currentAnimationDuration}ms`);
 
-    // --- Setup VISIBLE line geometry ---\
+    // --- Setup VISIBLE line geometry ---
     const curveGeometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    // <<< ADD polygonOffset to the line material >>>
     const curveMaterial = new THREE.LineBasicMaterial({
-        color: LINE_AND_TARGET_COLOR, linewidth: 2, depthTest: true, depthWrite: false,
-        transparent: true, opacity: 0.9, polygonOffset: true, polygonOffsetFactor: -0.5, polygonOffsetUnits: -0.5
+        color: LINE_AND_TARGET_COLOR,
+        linewidth: 2,
+        depthTest: true,        // Keep depth testing enabled
+        depthWrite: false,      // Keep depth write disabled
+        transparent: true,
+        opacity: 0.9,
+        polygonOffset: true,     // Enable polygon offset
+        polygonOffsetFactor: -1.0, // Push slightly "forward"
+        polygonOffsetUnits: -1.0  // Additional offset
     });
+    // <<< END Add polygonOffset >>>
+
+
     if (currentDistanceLine) {
-        if(currentDistanceLine.geometry) currentDistanceLine.geometry.dispose();
-        if(currentDistanceLine.material) currentDistanceLine.material.dispose();
-        scene.remove(currentDistanceLine);
+        // ... remove old line ...
     }
     currentDistanceLine = new THREE.Line(curveGeometry, curveMaterial);
     currentDistanceLine.geometry.setDrawRange(0, 0);
@@ -1467,72 +1523,104 @@ async function handleGuessConfirm() {
         playSound('incorrectGuess');
     }
     // -----------------------------------
+
+    // Stop the timer
+    stopTimer();
+
+    // Calculate score based on time
+    const timePenalty = Math.max(0, elapsedTime / 1000 - 10); // Subtract 10 seconds, no penalty for first 10 seconds
+    const timePenaltyFactor = Math.max(0, 1 - (timePenalty / 60)); // Max penalty after 60 seconds
+    currentRoundScore *= timePenaltyFactor;
+    currentRoundScore = Math.round(currentRoundScore);
+
+    console.log(`Time taken: ${(elapsedTime / 1000).toFixed(2)} seconds`);
+    console.log(`Time penalty factor: ${timePenaltyFactor.toFixed(2)}`);
+    console.log(`Adjusted score: ${currentRoundScore}`);
+    score += currentRoundScore; // <<< PROBLEM LINE
+    // scoreElement.textContent = totalScore; // <<< DELETE THIS LINE (or comment it out)
+    document.getElementById('score-display').innerText = score; // <<< CORRECTED LINE
 } // <<< ADDED Closing brace for handleGuessConfirm function
 
 // --- Marker/Pin/Target Handling ---
 
 // Function to create or update the pin sprite
-function createOrUpdatePin(position3D) {
-    const isNewPin = !pinSprite; // Check if this is the first placement
-    const currentScale = getPinScale(); // <-- Get scale based on device
+function createOrUpdatePin(position) {
+    const isNewPin = !pinSprite;
+    const currentScale = getPinScale();
 
     if (!pinSprite) {
-        // Create sprite material FIRST, using the constant
+        // <<< ADD polygonOffset to the pin material >>>
         const pinMaterial = new THREE.SpriteMaterial({
-            map: null, // Start with no map, will be set by loader
-            color: PIN_COLOR_DEFAULT.clone(), // Now this constant is defined
-            depthTest: true,
-            depthWrite: false,
-            sizeAttenuation: false
+            map: null, // Start with no map
+            color: PIN_COLOR_DEFAULT.clone(),
+            depthTest: true,        // Keep depth testing enabled
+            depthWrite: false,      // Keep depth write disabled (sprites often don't write depth)
+            sizeAttenuation: false, // Keep pin size constant regardless of distance
+            polygonOffset: true,     // Enable polygon offset
+            polygonOffsetFactor: -2.0, // Push slightly more than lines, maybe? Adjust if needed.
+            polygonOffsetUnits: -2.0
         });
+        // <<< END Add polygonOffset >>>
 
-        // Create the sprite object and assign it to the global variable
-        pinSprite = new THREE.Sprite(pinMaterial); // <-- Assign BEFORE texture load
-        pinSprite.scale.set(currentScale, currentScale, currentScale); // <-- Use determined scale
-        pinSprite.center.set(0.5, 0); // Set center immediately
 
-        // Now load the texture and update the EXISTING sprite's material
+        pinSprite = new THREE.Sprite(pinMaterial);
+        pinSprite.scale.set(currentScale, currentScale, currentScale);
+        pinSprite.center.set(0.5, 0);
+
+        // Load texture and update the *existing* sprite's material
         const pinTexture = new THREE.TextureLoader().load(
             PIN_IMAGE_PATH,
             (texture) => { // On Load
-                if (pinSprite) { // Check if pinSprite still exists
-                    pinSprite.material.map = texture; // Assign loaded texture to material map
-                    pinSprite.material.needsUpdate = true; // Tell three.js material changed
-                    pinSprite.position.copy(position3D); // Set position
-                    scene.add(pinSprite); // Add to scene AFTER texture is ready
+                if (pinSprite) {
+                    pinSprite.material.map = texture;
+                    pinSprite.material.needsUpdate = true;
+                    pinSprite.position.copy(position);
+                    scene.add(pinSprite);
                     console.log("Pin sprite created and texture loaded.");
-                    if (isNewPin) { // Only play sound on initial creation
-                        playSound('pinPlace');
+                    if (isNewPin) playSound('pinPlace');
+
+                    // <<< ADDED: Log button state *after* texture load (for info only) >>>
+                    if (guessButton) {
+                         console.log(`createOrUpdatePin (Texture Loaded): guessButton.disabled is currently ${guessButton.disabled}`);
                     }
-                } else {
-                    console.warn("Texture loaded but pinSprite was removed before completion.");
-                    texture.dispose(); // Clean up texture if sprite is gone
-                }
+
+                } else { /* ... cleanup ... */ }
             },
             undefined, // Progress
             (err) => { console.error("Error loading pin texture:", err); } // On Error
         );
 
-    } else { // Pin already exists, just update position
-        pinSprite.position.copy(position3D);
-        // Optionally update scale if window resized while pin exists (might be overkill)
-        // pinSprite.scale.set(currentScale, currentScale, currentScale);
-        // Play sound on update too if desired, or keep only on creation above
-        playSound('pinPlace'); // Example: Play sound on move too
+    } else { // Pin already exists
+        pinSprite.position.copy(position);
+        playSound('pinPlace');
     }
     // Update player guess coordinates
-    playerGuess = getLatLonFromPoint(position3D);
+    playerGuess = getLatLonFromPoint(position);
+
+    // <<< ADD DETAILED LOGS >>>
+    console.log(`createOrUpdatePin: Attempting to evaluate button state.`);
+    console.log(`createOrUpdatePin: Current value of isGuessLocked = ${isGuessLocked}`);
+    console.log(`createOrUpdatePin: Checking guessButton element:`, guessButton);
+    // <<< END DETAILED LOGS >>>
+
+
     // --- Enable GUESS button ONLY ---
     if (!isGuessLocked) {
+         console.log("createOrUpdatePin: Condition !isGuessLocked is TRUE."); // Log condition success
          if (guessButton) {
-         guessButton.disabled = false;
-             console.log(`createOrUpdatePin: guessButton.disabled set to ${guessButton.disabled}`); // <<< ADD LOG
+             console.log("createOrUpdatePin: guessButton element exists. Setting disabled = false."); // Log intent
+             guessButton.disabled = false; // Enable the button
+             console.log(`createOrUpdatePin: guessButton.disabled is now ${guessButton.disabled}`); // Confirm result
+         } else {
+             console.warn("createOrUpdatePin: guessButton element not found. Cannot enable.");
          }
          // Ensure nextButton remains disabled
          if (nextButton && nextButton.disabled !== true) {
              console.warn("createOrUpdatePin: Forcing nextButton back to disabled.");
              nextButton.disabled = true;
          }
+    } else {
+         console.log("createOrUpdatePin: Condition !isGuessLocked is FALSE. Guess button NOT enabled."); // Log condition failure
     }
 }
 
@@ -1592,7 +1680,10 @@ function createTargetRings() {
     const targetPositionOnSphere = targetCountryCenterVector;
     // --- End Use Global ---
 
-    const targetPositionOffset = targetPositionOnSphere.clone().normalize().multiplyScalar(EARTH_RADIUS + PIN_OFFSET); // Apply offset
+    // <<< USE NEW CONSTANT for offset >>>
+    const targetPositionOffset = targetPositionOnSphere.clone()
+        .normalize()
+        .multiplyScalar(EARTH_RADIUS + TARGET_RING_SURFACE_OFFSET); // Apply specific ring offset
 
     // Get or create the shared geometry
     const ringGeometry = createSharedRingLineGeometry();
@@ -1610,12 +1701,12 @@ function createTargetRings() {
         // Use the shared geometry
         const ringLine = new THREE.LineLoop(ringGeometry, ringLineMaterial);
 
-        ringLine.position.copy(targetPositionOffset);
+        ringLine.position.copy(targetPositionOffset); // Position using the calculated offset
         ringLine.lookAt(globe.position); // Rings face outwards from globe center
         targetRings.push(ringLine);
         scene.add(ringLine);
     }
-    console.log(`${targetRings.length} target ring lines created.`);
+    console.log(`${targetRings.length} target ring lines created at offset ${TARGET_RING_SURFACE_OFFSET}.`); // Log new offset
 }
 
 function removeTargetRings() {
@@ -1732,13 +1823,11 @@ async function initGame() {
     console.log(">>> initGame: Starting game initialization...");
 
     initMap();
-    console.log(">>> initGame: initMap() called.");
-
-    setupEventListeners(); // Sets initial state now
-
+    setupEventListeners();
     hideCountryInfoPanel();
     initScoreDisplay();
     initDistanceDisplay();
+    initCountryLabelDisplay(); // <<< ADD THIS CALL
     initShootingStars();
 
     console.log(">>> initGame: Preparing to load data and audio...");
@@ -1746,10 +1835,10 @@ async function initGame() {
         await loadAudio();
         console.log(">>> initGame: Audio loading process finished.");
 
-        const dataPromises = [
-            loadCountryData(),
-            loadFactsData(),
-        ];
+    const dataPromises = [
+        loadCountryData(),
+        loadFactsData(),
+    ];
         await Promise.all(dataPromises);
         console.log(">>> initGame: All essential game data loaded.");
 
@@ -2328,3 +2417,191 @@ function handleMusicToggle(event) {
 
 // --- Point-in-Polygon Logic ---
 // ...
+
+// --- Initialize Country Label Display ---
+function initCountryLabelDisplay() {
+    console.log("Initializing country label display elements...");
+    countryLabelCanvas = document.getElementById('country-label-canvas');
+
+    // <<< ADD THIS CHECK/LOG >>>
+    if (!countryLabelCanvas) {
+        console.error(">>> FATAL: Country label canvas element ('#country-label-canvas') NOT FOUND in HTML!");
+        // Ensure dependent variables are not assigned if canvas is missing
+        countryLabelContext = null;
+        countryLabelTexture = null;
+        countryLabelSprite = null;
+        return; // Exit the function early if canvas isn't found
+    } else {
+        console.log(">>> SUCCESS: Country label canvas element found."); // Confirm it was found
+    }
+    // <<< END CHECK/LOG >>>
+
+
+    countryLabelCanvas.width = COUNTRY_LABEL_CANVAS_WIDTH;
+    countryLabelCanvas.height = COUNTRY_LABEL_CANVAS_HEIGHT;
+    countryLabelContext = countryLabelCanvas.getContext('2d');
+
+    // Initial canvas clear and style setup
+    countryLabelContext.font = `bold ${COUNTRY_LABEL_FONT_SIZE}px Arial`;
+    countryLabelContext.fillStyle = COUNTRY_LABEL_COLOR;
+    countryLabelContext.textAlign = 'center';
+    countryLabelContext.textBaseline = 'middle';
+    countryLabelContext.clearRect(0, 0, countryLabelCanvas.width, countryLabelCanvas.height); // Start clean
+
+    countryLabelTexture = new THREE.CanvasTexture(countryLabelCanvas);
+
+    const labelMaterial = new THREE.SpriteMaterial({
+        map: countryLabelTexture,
+        transparent: true,
+        depthWrite: false,
+        depthTest: true, // Test against other objects
+        sizeAttenuation: true // Allow scaling with distance
+    });
+
+    countryLabelSprite = new THREE.Sprite(labelMaterial);
+    // Adjust scale based on canvas aspect ratio
+    countryLabelSprite.scale.set(
+        COUNTRY_LABEL_SPRITE_SCALE,
+        COUNTRY_LABEL_SPRITE_SCALE * (COUNTRY_LABEL_CANVAS_HEIGHT / COUNTRY_LABEL_CANVAS_WIDTH),
+        1
+    );
+    countryLabelSprite.position.set(0, 10000, 0); // Start hidden
+    countryLabelSprite.visible = false;
+    scene.add(countryLabelSprite);
+    console.log("Country label display initialized (sprite added)."); // Modified log
+}
+
+// --- Function to Update and Show Country Label ---
+function updateCountryLabel(countryName, centerVector) {
+    if (!countryLabelSprite || !countryLabelContext || !countryLabelTexture) {
+        console.warn("Cannot update country label, elements not initialized.");
+        return;
+    }
+    if (!countryName || !centerVector || centerVector.lengthSq() < 0.01) {
+        console.warn("Cannot update country label: Invalid name or center vector.");
+        countryLabelSprite.visible = false;
+        return;
+    }
+
+    // Clear canvas and draw text
+    countryLabelContext.clearRect(0, 0, countryLabelCanvas.width, countryLabelCanvas.height);
+    countryLabelContext.fillText(countryName, countryLabelCanvas.width / 2, countryLabelCanvas.height / 2);
+    countryLabelTexture.needsUpdate = true;
+
+    // Calculate position radially above the center vector
+    const labelPosition = centerVector.clone()
+        .normalize()
+        .multiplyScalar(EARTH_RADIUS + COUNTRY_LABEL_OFFSET);
+
+    countryLabelSprite.position.copy(labelPosition);
+    countryLabelSprite.visible = true;
+    console.log(`Displaying country label "${countryName}"`);
+}
+
+// ... rest of the script ...
+
+function showCountryLabel(countryName) {
+    countryLabelCanvasContext.clearRect(0, 0, countryLabelCanvas.width, countryLabelCanvas.height);
+
+    let fontSize = 40; // Initial font size
+    countryLabelCanvasContext.font = `${fontSize}px Arial`;
+    let textWidth = countryLabelCanvasContext.measureText(countryName).width;
+
+    // Reduce font size if text is too wide
+    while (textWidth > countryLabelCanvas.width - 20 && fontSize > 10) {
+        fontSize--;
+        countryLabelCanvasContext.font = `${fontSize}px Arial`;
+        textWidth = countryLabelCanvasContext.measureText(countryName).width;
+    }
+
+    countryLabelCanvasContext.fillStyle = 'white';
+    countryLabelCanvasContext.textAlign = 'center';
+    countryLabelCanvasContext.textBaseline = 'middle';
+    countryLabelCanvasContext.fillText(countryName, countryLabelCanvas.width / 2, countryLabelCanvas.height / 2);
+    countryLabelTexture.needsUpdate = true;
+    countryLabelSprite.visible = true;
+}
+
+function createDistanceLine(startPoint, endPoint) {
+    // ... (remove existing line) ...
+
+    const points = [];
+    const numPoints = 50;
+    // ... (calculate points along the arc) ...
+
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+    const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0xff0000,
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.8,
+        depthTest: false // <<< ADD THIS
+    });
+
+    currentDistanceLine = new THREE.Line(lineGeometry, lineMaterial);
+    // currentDistanceLine.renderOrder = 3; // <<< REMOVE THIS
+    scene.add(currentDistanceLine);
+    // ... (rest of the function) ...
+}
+
+// --- If using depthTest: false ---
+// const lineMaterial = new THREE.LineBasicMaterial({
+//     color: 0xff0000,
+//     linewidth: 2,
+//     transparent: true,
+//     opacity: 0.8,
+//     depthTest: false // <<< UNCOMMENT THIS
+// });
+// currentDistanceLine = new THREE.Line(lineGeometry, lineMaterial);
+// // currentDistanceLine.renderOrder = 3; // <<< REMOVE OR COMMENT OUT THIS LINE
+// scene.add(currentDistanceLine);
+
+function createOrUpdateBoundary(geoJson, countryName) {
+    // ... (existing code for creating the boundary mesh) ...
+
+    const boundaryMaterial = new THREE.MeshBasicMaterial({
+        color: 0xFFFF00, // Yellow color
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5,
+        depthTest: false // <<< ADD THIS
+    });
+
+    const boundary = new THREE.Mesh(geometry, boundaryMaterial);
+    // boundary.renderOrder = 2; // <<< REMOVE THIS
+    scene.add(boundary);
+
+    // ... (rest of the function) ...
+}
+
+let timerStartTime;
+let elapsedTime = 0;
+let timerInterval;
+let isTimerRunning = false;
+
+function startTimer() {
+    timerStartTime = performance.now();
+    isTimerRunning = true;
+    timerInterval = setInterval(updateTimer, 10); // Update every 10ms
+}
+
+function stopTimer() {
+    isTimerRunning = false;
+    clearInterval(timerInterval);
+}
+
+function updateTimer() {
+    if (isTimerRunning) {
+        elapsedTime = performance.now() - timerStartTime;
+        const formattedTime = (elapsedTime / 1000).toFixed(2); // Convert to seconds
+        document.getElementById('timer-display').innerText = formattedTime;
+    }
+}
+
+function resetTimerDisplay() {
+    document.getElementById('timer-display').innerText = "0.00";
+}
+
+window.addEventListener('beforeunload', () => {
+    clearInterval(timerInterval);
+});

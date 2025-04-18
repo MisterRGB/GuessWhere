@@ -23,7 +23,7 @@ body {
     position: absolute;
     top: 15px;
     left: 15px;
-    width: 300px;
+    width: 350px; /* Increase width */
     max-height: calc(100vh - 30px);
     overflow-y: auto;
     background-color: rgba(40, 40, 40, 0.85);
@@ -163,6 +163,7 @@ body {
     box-sizing: border-box;
     margin-top: 0; /* Rely on parent gap */
     margin-bottom: 0; /* Rely on parent gap */
+    flex-wrap: wrap; /* Add this line */
 }
 
 #left-panel .toggles-wrapper .toggle-container {
@@ -178,7 +179,7 @@ body {
 
 #left-panel .toggles-wrapper .toggle-container label {
     margin-right: 8px;
-    font-size: 0.95em; /* Adjust font size */
+    font-size: 0.85em; /* Reduce font size */
     white-space: nowrap;
     flex-shrink: 1; /* Allow label to shrink if needed */
     overflow: hidden;
@@ -741,4 +742,67 @@ body {
     opacity: 0.6;
 }
 
-/* ... rest of css ... */ 
+/* ... rest of css ... */
+
+#country-label-container {
+    /* Existing styles for the container */
+    text-align: center; /* Example: Center the content */
+}
+
+#timer-display {
+    font-size: 16px;
+    margin-top: 5px;
+    padding: 5px;
+    display: inline-block; /* Example: Display inline with other elements */
+    color: white; /* Ensure text is visible */
+}
+
+#game-info-container {
+    /* Your existing styles for the info container */
+    color: white;
+    padding: 10px;
+    text-align: center; /* Or left, depending on your design */
+}
+
+/* Style for the country name if needed */
+#country-name-display {
+    font-weight: bold;
+}
+
+#timer-display,
+#score-display,
+#country-name-display, /* Ensure country name also behaves inline */
+#find-country-label,
+#timer-label,
+#score-label {
+    display: inline-block; /* Or rely on span's natural inline flow */
+    margin: 0 5px;      /* Adjust spacing */
+    vertical-align: middle; /* Helps align items vertically */
+}
+
+.info-separator {
+    display: inline-block;
+    margin: 0 5px;
+    color: #aaa;
+    vertical-align: middle;
+}
+
+#controls-container {
+    display: flex;
+    gap: 15px; /* Increase gap */
+    justify-content: center;
+    margin-top: 10px;
+    padding-top: 10px;
+    flex-wrap: nowrap; /* Add this line */
+}
+
+#guess-button,
+#next-button {
+    padding: 12px 20px; /* More padding */
+    font-size: 1em;
+    border: none;
+    border-radius: 18px; /* Rounded buttons */
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    font-weight: 500;
+}

@@ -15,9 +15,18 @@
         <h1>Globe Guess</h1>
 
         <div id="game-info">
-            <p>Find this country: <span id="country-name">Loading...</span></p>
-            <p>Score: <span id="score">0</span></p>
-            <p>Distance from Country: <span id="distance">N/A</span></p>
+            <div id="game-info-container">
+                <span id="find-country-label">Find this country: </span>
+                <span id="country-name-display"></span>
+                <br>
+                <span id="timer-label">Time: </span>
+                <span id="timer-display">0.00</span>
+                <span class="info-separator"> | </span>
+                <span id="score-label">Score: </span>
+                <span id="score-display">0</span>
+                <br>
+                <p>Distance from Country: <span id="distance">N/A</span></p>
+            </div>
         </div>
 
         <!-- Wrapper for Side-by-Side Toggles (Mobile) -->
@@ -40,7 +49,7 @@
         </div>
 
         <!-- Button Container (Now always visible on mobile) -->
-        <div id="button-container">
+        <div id="controls-container">
             <button id="guess-button">Confirm Guess</button>
             <button id="next-button" style="display: none;">Next Country</button>
         </div>
@@ -62,6 +71,10 @@
 
     <!-- Hidden Canvas for Score Text -->
     <canvas id="score-canvas" style="display: none;"></canvas>
+    <!-- Hidden Canvas for Distance Text -->
+    <canvas id="distance-canvas" style="display: none;"></canvas>
+    <!-- Hidden Canvas for Country Label -->
+    <canvas id="country-label-canvas" style="display: none;"></canvas>
 
     <!-- Change main three.js source to jsdelivr and keep defer -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" defer></script>
