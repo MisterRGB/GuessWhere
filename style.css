@@ -526,6 +526,46 @@ body {
         width: 20px; /* Adjust icon size */
         height: 20px;
     }
+
+    #left-panel .toggles-wrapper {
+        display: flex;
+        flex-direction: row;
+        justify-content: flex-start; /* Align to start */
+        gap: 10px;
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0;
+        margin-bottom: 0;
+        flex-wrap: wrap;
+    }
+
+    #left-panel .toggles-wrapper .toggle-container {
+        flex: 1 1 30%; /* Grow, Shrink, Basis ~30% (aims for 3 per row) */
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px; /* Slightly reduce horizontal padding */
+        border-radius: 10px;
+        background-color: rgba(255, 255, 255, 0.05);
+        box-sizing: border-box;
+    }
+
+    #left-panel .toggles-wrapper .toggle-container label {
+        margin-right: 8px; /* Slightly reduce margin */
+        font-size: 0.85em; /* Slightly smaller font */
+        flex-shrink: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #left-panel .toggles-wrapper .toggle-container input[type="checkbox"] {
+        cursor: pointer;
+        width: 18px; /* Keep slightly smaller checkbox */
+        height: 18px;
+        accent-color: #8ab4f8;
+        flex-shrink: 0; /* Prevent checkbox shrinking */
+    }
 }
 
 /* --- Reset for Desktop --- */
