@@ -986,3 +986,49 @@ body.game-active #map-container {
 .modal-overlay.hidden {
     display: none;
 }
+
+/* --- ADD Styles for Start Button Container and Buttons --- */
+.modal-content .start-buttons-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    margin-top: 25px;
+    flex-wrap: wrap;
+}
+
+#start-game-button,
+#start-with-boundaries-button {
+    background-color: #61dafb !important;
+    color: #282c34 !important; /* Changed to white text */
+    border: none;
+    padding: 12px 25px;
+    font-size: 1.1em;
+    font-weight: bold;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    width: 220px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+}
+
+#start-with-boundaries-button {
+    background-color: #5c7e8a; /* A slightly different color */
+    color: #e0e0e0;
+}
+
+
+#start-game-button:hover,
+#start-with-boundaries-button:hover {
+    background-color: #4fa8c5 !important;
+    transform: scale(1.03);
+}
+
+#start-game-button:active,
+#start-with-boundaries-button:active {
+    transform: scale(0.98);
+}

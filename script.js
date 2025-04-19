@@ -54,9 +54,15 @@ let animatedScoreDisplayValue = 0;
 let backgroundMusicStarted = false; // <<< ADDED FLAG
 // let isScoreSoundPlaying = false; // <<< ADD THIS FLAG
 let isStartingNextRound = false; // <<< ADD NEW FLAG
+let showBoundaries = false; // <<< ADD: Variable to track boundary display choice
+let globeInitialized = false; // Add a flag to track if the globe is initialized
 
 // --- Three.js Variables ---
-let scene, camera, renderer, globe, controls, raycaster, mouse;
+// Ensure 'globe' is declared here globally, and remove 'globeMesh' if it exists elsewhere
+let scene, camera, renderer, globe, controls, raycaster, mouse; 
+// ... other global vars ...
+let globeMaterial; // Add global reference for material if needed for updates
+// let globeMesh; // <<< REMOVE THIS if it exists elsewhere
 let sunLight = null; // <-- Declare DirectionalLight globally
 let ambientLight = null; // <-- Declare AmbientLight globally
 let currentLineCurve = null; // To store the curve path for the line/plane
@@ -313,8 +319,7 @@ function initMap() {
     console.log("Lens flare added to sunLight.");
     // --- End Lens Flare ---
 
-    // Globe
-    // <<< INCREASE GEOMETRY DETAIL >>>
+    // Globe Geometry
     const globeGeometry = new THREE.SphereGeometry(
         EARTH_RADIUS,
         256, // Increased segments
@@ -324,33 +329,35 @@ function initMap() {
 
     // --- Texture Loading ---
     const textureLoader = new THREE.TextureLoader();
-    const texture = textureLoader.load('assets/8k_earth_daymap.jpg', /*...*/);
-    const normalTexture = textureLoader.load('assets/world_texture_2normal.png', /*...*/);
-    const roughnessTexture = textureLoader.load('assets/world_texture_2specular.png', /*...*/);
+    const textureFile = showBoundaries ? 'assets/world_texture_boundaries.jpg' : 'assets/world_texture_2.jpg';
+    console.log(`>>> initMap: Loading initial globe texture: ${textureFile} (boundaries: ${showBoundaries})`);
 
-    // <<< ADD: Load Displacement Map Texture >>>
+    const texture = textureLoader.load(textureFile);
+    const normalTexture = textureLoader.load('assets/world_texture_2normal.png');
+    const roughnessTexture = textureLoader.load('assets/world_texture_2specular.png');
     const displacementTexture = textureLoader.load(
-        'assets/earth_displacement.png', // <<< PATH TO YOUR DISPLACEMENT MAP
-        () => { console.log("Displacement map texture loaded successfully."); },
+        'assets/earth_displacement.png',
+        () => { console.log("Initial displacement map texture loaded successfully."); },
         undefined,
-        (err) => { console.error('Error loading displacement map texture:', err); }
+        (err) => { console.error('Error loading initial displacement map texture:', err); }
     );
-    // <<< END ADD >>>
 
-    // --- Modify Material Definition ---
-    const globeMaterial = new THREE.MeshStandardMaterial({
-        map: texture, // Color map
-        normalMap: normalTexture, // Normal map
-        roughnessMap: roughnessTexture, // Roughness map
-        displacementMap: displacementTexture, // Displacement map
-        displacementScale: 0.2, // <<< KEEP THIS VALUE (maximum terrain height)
+    // --- Globe Material ---
+    // Assign to global material variable
+    globeMaterial = new THREE.MeshStandardMaterial({
+        map: texture,
+        normalMap: normalTexture,
+        roughnessMap: roughnessTexture,
+        displacementMap: displacementTexture,
+        displacementScale: 0.2,
     });
-    // --- End Modify Material ---
 
-    globe = new THREE.Mesh(globeGeometry, globeMaterial);
+    // --- Globe Mesh ---
+    // Use the global 'globe' variable
+    globe = new THREE.Mesh(globeGeometry, globeMaterial); 
     globe.receiveShadow = true;
-    // globe.renderOrder = 1; // <<< REMOVE THIS (likely not needed)
-    scene.add(globe);
+    scene.add(globe); // Add the single, global globe object
+    console.log(">>> initMap: Initial globe mesh created and added to scene.");
 
     // --- Cloud Layer ---
     console.log("Creating cloud layer...");
@@ -480,7 +487,7 @@ function initMap() {
     // Start animation loop
     animate();
 
-    console.log("Map initialized with displacement map.");
+    console.log("Map initialized.");
 
     // --- Country Label Sprite ---
     countryLabelCanvas = document.createElement('canvas');
@@ -512,6 +519,46 @@ function initMap() {
     scoreSprite.visible = false;
     // scoreSprite.renderOrder = 5; // <<< REMOVE THIS
     scene.add(scoreSprite);
+
+   
+
+    
+    // Add error handling to texture loading
+    textureLoader.load(
+        textureFile,
+        // Success callback
+        function(texture) {
+            console.log(`>>> Texture loaded successfully: ${textureFile}`);
+            // Continue with the texture setup
+            const material = new THREE.MeshPhongMaterial({
+                map: texture,
+                // ... other material properties
+            });
+            
+            // Create the globe mesh
+            const globe = new THREE.Mesh(globeGeometry, material);
+            // ... rest of globe setup
+            
+            scene.add(globe);
+        },
+        // Progress callback
+        function(xhr) {
+            console.log(`>>> Texture loading: ${(xhr.loaded / xhr.total * 100)}% loaded`);
+        },
+        // Error callback
+        function(error) {
+            console.error(`>>> ERROR loading texture ${textureFile}:`, error);
+            // Fallback to a default texture if available
+            console.log(">>> Attempting to load fallback texture: assets/world_texture_2.jpg");
+            textureLoader.load(
+                'assets/world_texture_2.jpg',
+                function(fallbackTexture) {
+                    // Use fallback texture
+                    // ... similar setup as above
+                }
+            );
+        }
+    );
 }
 
 function onWindowResize() {
@@ -886,21 +933,19 @@ function highlightCountryBoundary(countryGeometry) {
 
     const boundaryOffset = 0.05; // Keep the existing radial offset
 
-    // <<< MODIFY Boundary Material >>>
+    // <<< ADD polygonOffset properties to the material >>>
     const boundaryMaterial = new THREE.LineBasicMaterial({
         color: LINE_AND_TARGET_COLOR, // Yellow
-        linewidth: 1.5, // Note: linewidth > 1 might not work on all platforms/drivers
-        // --- Disable Depth Testing/Writing ---
-        depthTest: false,        // <<< SET TO false
-        depthWrite: false,       // <<< ENSURE false
-        // ------------------------------------
+        linewidth: 1.5,
+        depthTest: true,        // Keep depth testing enabled
+        depthWrite: false,       // Keep depth write disabled
         transparent: true,
         opacity: 0.9,
         polygonOffset: true,     // Enable polygon offset
         polygonOffsetFactor: -1.0, // Push slightly "forward" (negative values push away from camera)
         polygonOffsetUnits: -1.0  // Additional offset based on depth slope
     });
-    // <<< END Modify Boundary Material >>>
+    // <<< END Add polygonOffset >>>
 
 
     const type = countryGeometry.type;
@@ -911,37 +956,39 @@ function highlightCountryBoundary(countryGeometry) {
     try {
         let linesAdded = 0;
         if (type === 'Polygon') {
+            // ... (process Polygon) ...
             const outerRingCoords = coordinates[0];
             const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
             if (points3D.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                // Use the SAME material instance (already modified above)
+                // Use the SAME material instance for single Polygon
                 const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial);
                 scene.add(lineLoop);
                 highlightedBoundaryLines.push(lineLoop);
                 linesAdded++;
-            } else { console.warn("[highlightCountryBoundary] Polygon: Not enough points (>= 2) to create line loop."); }
+            } // ... else warn ...
         } else if (type === 'MultiPolygon') {
+            // ... (process MultiPolygon) ...
             for (let i = 0; i < coordinates.length; i++) {
                 const polygon = coordinates[i];
                 const outerRingCoords = polygon[0];
                 const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
                 if (points3D.length >= 2) {
                     const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                    // Use CLONED material instance. The properties from the original (depthTest:false etc.) will be cloned.
-                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone());
+                    // Use CLONED material instance for MultiPolygon parts
+                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone()); // Clone material here
                     scene.add(lineLoop);
                     highlightedBoundaryLines.push(lineLoop);
                      linesAdded++;
-                } else { console.warn(`[highlightCountryBoundary] MultiPolygon part ${i}: Not enough points (>= 2) to create line loop.`); }
+                } // ... else warn ...
             }
-        } else { console.warn(`[highlightCountryBoundary] Unsupported geometry type: ${type}`); }
+        } // ... else warn ...
 
          console.log(`[highlightCountryBoundary] Highlighting finished. Total lines added: ${linesAdded}. Array length: ${highlightedBoundaryLines.length}`);
 
     } catch (error) {
          console.error("[highlightCountryBoundary] Error creating boundary highlight geometry:", error);
-         removeHighlightedBoundaries(); // Clean up if error occurs
+         removeHighlightedBoundaries();
     }
 }
 
@@ -1435,7 +1482,8 @@ async function handleGuessConfirm() {
     const endVec = targetCountryCenterVector.clone();
     const points = [];
     const numPoints = 50;
-    const lineOffset = TARGET_RING_SURFACE_OFFSET; // Use ring offset for consistency
+    // <<< USE TARGET_RING_SURFACE_OFFSET for the line offset as well? Or define a new one? Let's use ring offset for consistency >>>
+    const lineOffset = TARGET_RING_SURFACE_OFFSET; // Align line height with rings
 
     for (let i = 0; i <= numPoints; i++) {
         const t = i / numPoints;
@@ -1446,7 +1494,7 @@ async function handleGuessConfirm() {
 
     currentLineCurve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.1);
 
-    // --- Calculate Dynamic Duration for LINE ---
+    // --- Calculate Dynamic Duration for LINE ---\
     const curveLength = currentLineCurve.getLength();
     let duration = (curveLength / LINE_ANIMATION_SPEED) * 1000;
     currentAnimationDuration = Math.max(MIN_LINE_DURATION, Math.min(duration, MAX_LINE_DURATION));
@@ -1455,21 +1503,19 @@ async function handleGuessConfirm() {
     // --- Setup VISIBLE line geometry ---
     const curveGeometry = new THREE.BufferGeometry().setFromPoints(points);
 
-    // <<< MODIFY Line Material >>>
+    // <<< ADD polygonOffset to the line material >>>
     const curveMaterial = new THREE.LineBasicMaterial({
         color: LINE_AND_TARGET_COLOR,
-        linewidth: 2, // Note: linewidth > 1 might not work on all platforms/drivers
-        // --- Disable Depth Testing/Writing ---
-        depthTest: false,        // <<< SET TO false
-        depthWrite: false,       // <<< ENSURE false
-        // ------------------------------------
+        linewidth: 2,
+        depthTest: true,        // Keep depth testing enabled
+        depthWrite: false,      // Keep depth write disabled
         transparent: true,
         opacity: 0.9,
-        polygonOffset: true,     // Keep polygon offset
-        polygonOffsetFactor: -1.0,
-        polygonOffsetUnits: -1.0
+        polygonOffset: true,     // Enable polygon offset
+        polygonOffsetFactor: -1.0, // Push slightly "forward"
+        polygonOffsetUnits: -1.0  // Additional offset
     });
-    // <<< END Modify Line Material >>>
+    // <<< END Add polygonOffset >>>
 
 
     // Remove old line if it somehow still exists (defensive)
@@ -1483,7 +1529,9 @@ async function handleGuessConfirm() {
 
     currentDistanceLine = new THREE.Line(curveGeometry, curveMaterial);
     currentDistanceLine.geometry.setDrawRange(0, 0);
+    // --- Add a custom property to identify the line ---
     currentDistanceLine.isTravelLine = true;
+    // ----------------------------------------------
     currentDistanceLine.visible = true;
     scene.add(currentDistanceLine);
     lineTotalPoints = points.length;
@@ -1554,6 +1602,14 @@ async function handleGuessConfirm() {
         console.warn(">>> handleGuessConfirm: infoPanelElement NOT found, cannot show panel.");
     }
     // --- End Show Info Panel ---
+
+    // Highlight Country Boundary (if enabled)
+    if (showBoundaries && currentCountry.geometry) {
+        console.log("Highlighting boundary because showBoundaries is true.");
+        highlightCountryBoundary(currentCountry.geometry);
+    } else {
+        console.log("Skipping boundary highlight because showBoundaries is false or geometry is missing.");
+    }
 } // <<< ADDED Closing brace for handleGuessConfirm function
 
 // --- Marker/Pin/Target Handling ---
@@ -1564,19 +1620,18 @@ function createOrUpdatePin(position) {
     const currentScale = getPinScale();
 
     if (!pinSprite) {
+        // <<< ADD polygonOffset to the pin material >>>
         const pinMaterial = new THREE.SpriteMaterial({
             map: null, // Start with no map
             color: PIN_COLOR_DEFAULT.clone(),
-            // --- Disable Depth Testing/Writing ---
-            depthTest: false,        // <<< SET TO false
-            depthWrite: false,       // <<< ENSURE false
-            // ------------------------------------
+            depthTest: true,        // Keep depth testing enabled
+            depthWrite: false,      // Keep depth write disabled (sprites often don't write depth)
             sizeAttenuation: false, // Keep pin size constant regardless of distance
-            polygonOffset: true,     // Keep polygon offset (might help self-sorting if needed)
-            polygonOffsetFactor: -2.0,
+            polygonOffset: true,     // Enable polygon offset
+            polygonOffsetFactor: -2.0, // Push slightly more than lines, maybe? Adjust if needed.
             polygonOffsetUnits: -2.0
         });
-        // <<< END Material Modification >>>
+        // <<< END Add polygonOffset >>>
 
 
         pinSprite = new THREE.Sprite(pinMaterial);
@@ -1608,7 +1663,7 @@ function createOrUpdatePin(position) {
 
     } else { // Pin already exists
         pinSprite.position.copy(position);
-        // playSound('pinPlace'); // Consider if sound needed on move
+        playSound('pinPlace');
     }
     // Update player guess coordinates
     playerGuess = getLatLonFromPoint(position);
@@ -1838,11 +1893,6 @@ function onPointerUp(event) {
 async function initGame() {
     console.log(">>> initGame: Starting game initialization...");
 
-    // --- Attempt to Enter Fullscreen on Load ---
-    console.log(">>> initGame: Attempting to enter fullscreen...");
-    toggleFullScreen(); // <<< ADD THIS CALL
-    // --- End Fullscreen Attempt ---
-
     initMap(); // Sets up scene, camera, renderer, controls
     setupEventListeners(); // Sets up button listeners (including the new start button)
     hideCountryInfoPanel(); // Keep this hidden initially
@@ -1991,16 +2041,39 @@ function onPanelToggleClick(event) {
 function setupEventListeners() {
     console.log("Setting up event listeners...");
 
-    // --- ADD START BUTTON LISTENER ---
-    console.log(">>> setupEventListeners: Checking startGameButton element:", startGameButton); // <<< ADD LOG 2
+    // --- MODIFY START BUTTON LISTENERS ---
+    const startGameButton = document.getElementById('start-game-button'); // Get button ref here
+    const startWithBoundariesButton = document.getElementById('start-with-boundaries-button'); // Get new button ref
+
+    console.log(">>> setupEventListeners: Checking start buttons:", startGameButton, startWithBoundariesButton);
+
     if (startGameButton) {
-        console.log(">>> setupEventListeners: startGameButton found. Adding click listener..."); // <<< ADD LOG 2.1
-        startGameButton.addEventListener('click', startGame); // Call the new startGame function
-        console.log(">>> setupEventListeners: Added click listener to startGameButton."); // <<< ADD LOG 2.2
+        startGameButton.addEventListener('click', () => {
+            console.log(">>> Start Game (Hard) button clicked!");
+            showBoundaries = false; // Set boundaries OFF
+            console.log(">>> Will use texture without boundaries");
+            // Update texture if needed (in case we're restarting)
+            updateGlobeTexture(); 
+            startGame();
+        });
+        console.log(">>> setupEventListeners: Added click listener to startGameButton.");
     } else {
-        console.warn(">>> setupEventListeners: startGameButton element NOT found, cannot add listener."); // <<< ADD LOG 2.3
+        console.warn(">>> setupEventListeners: startGameButton element NOT found.");
     }
-    // --- END ADD ---
+
+    if (startWithBoundariesButton) {
+        startWithBoundariesButton.addEventListener('click', () => {
+            console.log(">>> Start with Boundaries button clicked!");
+            showBoundaries = true; // Set boundaries ON
+            console.log(">>> Will use texture with boundaries");
+            updateGlobeTexture(); // Update the texture before starting the game
+            startGame();
+        });
+        console.log(">>> setupEventListeners: Added click listener to startWithBoundariesButton.");
+    } else {
+        console.warn(">>> setupEventListeners: startWithBoundariesButton element NOT found.");
+    }
+    // --- END MODIFY START BUTTON LISTENERS ---
 
     if (guessButton) {
          // ... existing guessButton listener ...
@@ -2467,6 +2540,7 @@ function tryStartBackgroundMusic() {
     }
 }
 // --- End Audio Functions ---
+// <<< END MOVE >>>
 
 // ... after handleShadowToggle ...
 
@@ -2748,8 +2822,7 @@ function init() {
 
 // --- NEW FUNCTION TO START THE GAME ---
 function startGame() {
-    console.log(">>> startGame function successfully called!");
-    console.log(">>> startGame: Start button clicked!");
+    console.log(`>>> startGame: Starting game with showBoundaries = ${showBoundaries}`); // Log the state
 
     // --- ADD CLASS TO BODY TO REMOVE BLUR ---
     document.body.classList.add('game-active');
@@ -2823,3 +2896,78 @@ const MOBILE_INITIAL_ZOOM = 14; // Or similar value
 const MOBILE_TARGET_OFFSET_Y = -1.0; // Or similar value
 const MOBILE_FINAL_ZOOM = 12; // Or similar value
 const MOBILE_MIN_DISTANCE_AFTER_GUESS = 7; // Or similar value
+
+// Create a new function to update the globe texture
+function updateGlobeTexture() {
+    // Check if globe exists and needs updating
+    if (!globe || !scene) {
+        console.error(">>> updateGlobeTexture: Globe or scene not initialized!");
+        return;
+    }
+
+    const textureFile = showBoundaries ? 'assets/world_texture_boundaries.jpg' : 'assets/world_texture_2.jpg';
+    // Check if the texture is already the correct one (optimization)
+    if (globe.material.map && globe.material.map.image && globe.material.map.image.src.includes(textureFile.split('/').pop())) {
+         console.log(`>>> updateGlobeTexture: Texture ${textureFile} already loaded. No update needed.`);
+         return;
+    }
+
+    console.log(`>>> updateGlobeTexture: Preparing to update globe with texture: ${textureFile}`);
+
+    // --- Dispose of old resources ---
+    if (globe) {
+        console.log(">>> updateGlobeTexture: Removing old globe from scene.");
+        scene.remove(globe);
+        if (globe.geometry) {
+            globe.geometry.dispose();
+            console.log(">>> updateGlobeTexture: Disposed old globe geometry.");
+        }
+        if (globe.material) {
+            // Dispose textures attached to the old material
+            if (globe.material.map) globe.material.map.dispose();
+            if (globe.material.normalMap) globe.material.normalMap.dispose();
+            if (globe.material.roughnessMap) globe.material.roughnessMap.dispose();
+            if (globe.material.displacementMap) globe.material.displacementMap.dispose();
+            globe.material.dispose();
+            console.log(">>> updateGlobeTexture: Disposed old globe material and its textures.");
+        }
+    }
+    // Nullify the global reference temporarily
+    globe = null; 
+    globeMaterial = null;
+    // --- End Disposal ---
+
+    const textureLoader = new THREE.TextureLoader();
+
+    // Load all necessary textures
+    console.log(`>>> updateGlobeTexture: Loading new textures...`);
+    const newTexture = textureLoader.load(textureFile);
+    const newNormalTexture = textureLoader.load('assets/world_texture_2normal.png');
+    const newRoughnessTexture = textureLoader.load('assets/world_texture_2specular.png');
+    const newDisplacementTexture = textureLoader.load('assets/earth_displacement.png');
+
+    // Use Promise.allSettled or similar if fine-grained loading status is needed,
+    // but for simplicity, we'll assume they load. Add error handlers to loads if needed.
+
+    // Create fresh geometry and material
+    const newGlobeGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 256, 256);
+    
+    // Assign to global material variable
+    globeMaterial = new THREE.MeshStandardMaterial({
+        map: newTexture,
+        normalMap: newNormalTexture,
+        roughnessMap: newRoughnessTexture,
+        displacementMap: newDisplacementTexture, // <<< ADD Displacement map
+        displacementScale: 0.2,                  // <<< ADD Displacement scale
+        // ... other consistent material properties
+    });
+
+    // Create new globe mesh using the global variable
+    globe = new THREE.Mesh(newGlobeGeometry, globeMaterial);
+    globe.receiveShadow = true;
+
+    // Add it back to the scene
+    scene.add(globe);
+
+    console.log(">>> Globe recreated and added to scene with new texture!");
+}
