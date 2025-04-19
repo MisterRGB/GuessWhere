@@ -922,87 +922,124 @@ function getPolygonPoints3D(polygonCoords, offset) {
 }
 
 // --- Function to highlight country boundaries ---
-function highlightCountryBoundary(countryGeometry) {
-    console.log("[highlightCountryBoundary] Attempting to highlight boundary...");
+function highlightCountryBoundary(countryGeometry, isCorrect = false) {
+    console.log(`[highlightCountryBoundary] isCorrect: ${isCorrect}`);
 
     if (!countryGeometry) {
-        console.warn("[highlightCountryBoundary] Cannot highlight boundary: Geometry data missing.");
+        console.warn("Cannot highlight boundary: Geometry data missing.");
         return;
     }
-    removeHighlightedBoundaries(); // Call cleanup first
 
-    const boundaryOffset = 0.05; // Keep the existing radial offset
-
-    // <<< ADD polygonOffset properties to the material >>>
+    const boundaryOffset = 0.05;
+    
+    // Create YELLOW boundary material (permanent)
     const boundaryMaterial = new THREE.LineBasicMaterial({
-        color: LINE_AND_TARGET_COLOR, // Yellow
-        linewidth: 1.5,
-        depthTest: true,        // Keep depth testing enabled
-        depthWrite: false,       // Keep depth write disabled
-        transparent: true,
-        opacity: 0.9,
-        polygonOffset: true,     // Enable polygon offset
-        polygonOffsetFactor: -1.0, // Push slightly "forward" (negative values push away from camera)
-        polygonOffsetUnits: -1.0  // Additional offset based on depth slope
+        color: 0xFFFF00, // Yellow
+        linewidth: 2,
+        depthTest: true,
+        depthWrite: false,
+        transparent: false, // Solid
+        opacity: 1.0,
+        polygonOffset: true,
+        polygonOffsetFactor: -2.0,
+        polygonOffsetUnits: -2.0
     });
-    // <<< END Add polygonOffset >>>
-
 
     const type = countryGeometry.type;
     const coordinates = countryGeometry.coordinates;
 
-    console.log(`[highlightCountryBoundary] Geometry type: ${type}, Offset: ${boundaryOffset}`);
-
     try {
-        let linesAdded = 0;
         if (type === 'Polygon') {
-            // ... (process Polygon) ...
             const outerRingCoords = coordinates[0];
             const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
+            
             if (points3D.length >= 2) {
                 const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                // Use the SAME material instance for single Polygon
                 const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial);
                 scene.add(lineLoop);
-                highlightedBoundaryLines.push(lineLoop);
-                linesAdded++;
-            } // ... else warn ...
-        } else if (type === 'MultiPolygon') {
-            // ... (process MultiPolygon) ...
+                PERMANENT_BOUNDARIES.push(lineLoop); // Store in permanent array
+            }
+        } 
+        else if (type === 'MultiPolygon') {
             for (let i = 0; i < coordinates.length; i++) {
                 const polygon = coordinates[i];
                 const outerRingCoords = polygon[0];
                 const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
+                
                 if (points3D.length >= 2) {
                     const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                    // Use CLONED material instance for MultiPolygon parts
-                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone()); // Clone material here
+                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone());
                     scene.add(lineLoop);
-                    highlightedBoundaryLines.push(lineLoop);
-                     linesAdded++;
-                } // ... else warn ...
+                    PERMANENT_BOUNDARIES.push(lineLoop); // Store in permanent array
+                }
             }
-        } // ... else warn ...
-
-         console.log(`[highlightCountryBoundary] Highlighting finished. Total lines added: ${linesAdded}. Array length: ${highlightedBoundaryLines.length}`);
-
+        }
     } catch (error) {
-         console.error("[highlightCountryBoundary] Error creating boundary highlight geometry:", error);
-         removeHighlightedBoundaries();
+        console.error("Error creating boundary highlight:", error);
     }
+}
+
+// Helper function to create tangent basis vectors for a normal vector
+function createTangentBasis(normal) {
+    // Find a vector not parallel to normal
+    let tangent;
+    if (Math.abs(normal.x) < 0.8) {
+        tangent = new THREE.Vector3(1, 0, 0);
+    } else {
+        tangent = new THREE.Vector3(0, 1, 0);
+    }
+    
+    // Make tangent perpendicular to normal
+    tangent.sub(normal.clone().multiplyScalar(normal.dot(tangent)));
+    tangent.normalize();
+    
+    // Create bitangent (third basis vector)
+    const bitangent = new THREE.Vector3().crossVectors(normal, tangent);
+    
+    return { tangent, bitangent };
+}
+
+// Project a 3D point onto a plane defined by a normal and a point on the plane
+function projectPointToPlane(point, normal, basis, originPoint) {
+    // Vector from origin to point
+    const toPoint = point.clone().sub(originPoint);
+    
+    // Project onto tangent and bitangent
+    const x = toPoint.dot(basis.tangent);
+    const y = toPoint.dot(basis.bitangent);
+    
+    return { x, y };
+}
+
+// Transform a 2D shape geometry back to 3D space
+function transformShapeBackTo3D(geometry, normal, basis, originPoint) {
+    const positions = geometry.attributes.position;
+    
+    for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i);
+        const y = positions.getY(i);
+        const z = positions.getZ(i);
+        
+        // Convert from 2D tangent space to 3D world space
+        const worldPos = new THREE.Vector3()
+            .copy(originPoint)
+            .add(basis.tangent.clone().multiplyScalar(x))
+            .add(basis.bitangent.clone().multiplyScalar(y));
+        
+        // Ensure the point is at the correct distance from center (on the sphere)
+        worldPos.normalize().multiplyScalar(EARTH_RADIUS + 0.05);
+        
+        positions.setXYZ(i, worldPos.x, worldPos.y, worldPos.z);
+    }
+    
+    positions.needsUpdate = true;
 }
 
 // --- Function to remove highlighted boundaries ---
 function removeHighlightedBoundaries() {
-    if (highlightedBoundaryLines.length > 0) {
-        console.log("Removing previous boundary highlights...");
-        highlightedBoundaryLines.forEach(line => {
-            if (line.geometry) line.geometry.dispose();
-            if (line.material) line.material.dispose();
-            scene.remove(line);
-        });
-        highlightedBoundaryLines = [];
-    }
+    // This now only removes temporary highlights (if any)
+    // Permanent boundaries remain in the scene
+    console.log("Removing temporary boundary highlights (if any)...");
 }
 
 // --- Game Logic ---
@@ -1086,6 +1123,9 @@ async function startNewRound() {
     console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}. Timer started.`);
 
     // --- NO flag reset here (handled in listener) ---
+
+    // Clear previous permanent boundaries
+    clearAllBoundaries();
 }
 
 function handleMapClick(event) {
@@ -1381,9 +1421,10 @@ async function handleGuessConfirm() {
     console.log("Confirming guess...");
     console.log("Current country geometry before scoring/highlighting:", currentCountry.geometry);
 
+    let isGuessCorrect = false;
     let roundScore = 0;
-    let distance = null; // Initialize distance
-
+    let distance = null;
+    
     // --- Calculate True Center Vector FIRST (if geometry exists) ---
     // This block remains the same - it calculates targetCountryCenterVector
     if (currentCountry.geometry) {
@@ -1405,48 +1446,91 @@ async function handleGuessConfirm() {
     const targetCenterLatLon = getLatLonFromPoint(targetCountryCenterVector);
     // --- End Conversion ---
 
-    // --- SCORING LOGIC (Uses geometry or fallback) ---
+    // --- SCORING LOGIC with ADJUSTED CORRECTNESS CHECK ---
     if (currentCountry.geometry) {
-        const isInside = isPointInCountry(playerGuess, currentCountry.geometry);
-        if (isInside) {
-            console.log("Guess is INSIDE country boundary!");
-            roundScore = 1000;
-            distance = 0; // Still display 0 distance for perfect guess
-        } else {
-            console.log("Guess is OUTSIDE country boundary. Calculating score by distance to GEOMETRIC center.");
-            // Calculate distance to the GEOMETRIC center point
-            distance = calculateDistance(
-                playerGuess.lat, playerGuess.lon,
-                targetCenterLatLon.lat, targetCenterLatLon.lon // <<< USE DERIVED LAT/LON
-            );
-            // Apply the 3000km threshold scoring
-            if (distance <= 3000) {
-                roundScore = 2000 - distance;
-                console.log(`Distance (${distance}km) <= 3000km. Score: ${roundScore}`);
-            } else {
-                roundScore = 0;
-                 console.log(`Distance (${distance}km) > 3000km. Score: 0`);
-            }
-        }
-    } else { // Fallback if boundary data failed to load
-        console.warn("No boundary data for country, calculating score by distance to FALLBACK center point only.");
-        // Calculate distance to the FALLBACK center point (which is already derived from .lat/.lon)
         distance = calculateDistance(
             playerGuess.lat, playerGuess.lon,
-            targetCenterLatLon.lat, targetCenterLatLon.lon // <<< USE DERIVED LAT/LON (consistent logic)
+            targetCenterLatLon.lat, targetCenterLatLon.lon
         );
-        // Apply the 3000km threshold scoring (fallback)
-        if (distance <= 3000) {
+        
+        console.log(`Distance to country center: ${distance}km`);
+        
+        // --- ADJUST THESE THRESHOLDS ---
+        const PERFECT_THRESHOLD = 150;  // e.g., slightly larger perfect zone
+        const GOOD_THRESHOLD = 750;     // Increased good threshold (will make 402km green)
+        // -----------------------------
+        
+        if (distance <= PERFECT_THRESHOLD) {
+            console.log(`PERFECT GUESS! Distance (${distance}km) <= ${PERFECT_THRESHOLD}km`);
+            roundScore = 1000; 
+            isGuessCorrect = true;
+        } 
+        else if (distance <= GOOD_THRESHOLD) {
+            console.log(`GOOD GUESS! Distance (${distance}km) <= ${GOOD_THRESHOLD}km`);
+            // Adjust scoring if desired, or keep it simple
+            roundScore = 900 - Math.floor((distance - PERFECT_THRESHOLD) / 2); // Example scoring adjustment
+            isGuessCorrect = true; // Mark as correct (green)
+        }
+        else if (distance <= 3000) {
+            console.log(`CLOSE GUESS. Distance (${distance}km) <= 3000km`);
             roundScore = 2000 - distance;
-             console.log(`Fallback: Distance (${distance}km) <= 3000km. Score: ${roundScore}`);
+            isGuessCorrect = false; // Red highlight
+        } 
+        else {
+            console.log(`FAR GUESS. Distance (${distance}km) > 3000km`);
+            roundScore = 0;
+            isGuessCorrect = false; // Red highlight
+        }
+        
+        // Keep the polygon check as an override
+        const isInside = isPointInCountry(playerGuess, currentCountry.geometry);
+        console.log(`For reference, polygon check says isInside = ${isInside}`);
+        if (isInside) {
+            console.log("Polygon check shows point is INSIDE - overriding distance check");
+            isGuessCorrect = true; // Ensure green if inside
+            if (roundScore < 1000) {
+                 roundScore = 1000; 
+            }
+        }
+
+    } else {
+        // Fallback logic using the same adjusted thresholds
+        console.warn("No boundary data for country, using distance-based scoring only.");
+        distance = calculateDistance(
+            playerGuess.lat, playerGuess.lon,
+            targetCenterLatLon.lat, targetCenterLatLon.lon
+        );
+        
+        const PERFECT_THRESHOLD = 150; 
+        const GOOD_THRESHOLD = 750;     
+
+        if (distance <= PERFECT_THRESHOLD) {
+            roundScore = 1000;
+            isGuessCorrect = true;
+        } else if (distance <= GOOD_THRESHOLD) {
+            roundScore = 900 - Math.floor((distance - PERFECT_THRESHOLD) / 2);
+            isGuessCorrect = true;
+        } else if (distance <= 3000) {
+            roundScore = 2000 - distance;
+            isGuessCorrect = false; // Keep false for red highlight
         } else {
             roundScore = 0;
-             console.log(`Fallback: Distance (${distance}km) > 3000km. Score: 0`);
+            isGuessCorrect = false; // Keep false for red highlight
         }
     }
-    // Ensure score is not negative
-    roundScore = Math.max(0, roundScore);
-    // --- END SCORING LOGIC ---
+    
+    roundScore = Math.max(0, roundScore); // Ensure score isn't negative
+    
+    console.log(`Final determination: isGuessCorrect = ${isGuessCorrect}, Distance = ${distance}km, Score = ${roundScore}`);
+    
+    // ... existing score updates, etc. ...
+
+    // Highlight boundary using the determined isGuessCorrect value
+    if (currentCountry.geometry) {
+        highlightCountryBoundary(currentCountry.geometry, isGuessCorrect);
+    }
+
+    // ... rest of function ...
 
     // Update total score and UI
     score += currentRoundScore; // <<< CORRECTED LINE
@@ -1544,13 +1628,6 @@ async function handleGuessConfirm() {
     lineAnimationStartTime = performance.now();
     isLineAnimating = true;
 
-    // Highlight Country Boundary
-    if (currentCountry.geometry) {
-        highlightCountryBoundary(currentCountry.geometry);
-    } else {
-        console.warn("Skipping boundary highlight because geometry is missing.");
-    }
-
     // --- Setup Camera Glide (Uses calculated targetCountryCenterVector implicitly via animate loop) ---
     if (pinSprite && currentLineCurve) {
         console.log("Calculating initial distance and starting camera glide.");
@@ -1610,7 +1687,31 @@ async function handleGuessConfirm() {
     } else {
         console.log("Skipping boundary highlight because showBoundaries is false or geometry is missing.");
     }
-} // <<< ADDED Closing brace for handleGuessConfirm function
+
+    // Add this new helper function
+    function calculateDistanceToBoundary(lat, lon, geometry) {
+        // Convert geometry to array of boundary points
+        const boundaryPoints = [];
+        if (geometry.type === 'Polygon') {
+            boundaryPoints.push(...geometry.coordinates[0]);
+        } 
+        else if (geometry.type === 'MultiPolygon') {
+            geometry.coordinates.forEach(polygon => {
+                boundaryPoints.push(...polygon[0]);
+            });
+        }
+
+        // Find minimum distance to any boundary point
+        let minDistance = Infinity;
+        boundaryPoints.forEach(point => {
+            const [pointLon, pointLat] = point;
+            const dist = calculateDistance(lat, lon, pointLat, pointLon);
+            if (dist < minDistance) minDistance = dist;
+        });
+
+        return minDistance;
+    }
+}
 
 // --- Marker/Pin/Target Handling ---
 
@@ -2339,10 +2440,160 @@ window.addEventListener('load', initGame);
 
 // ... (Point-in-Polygon Logic) ...
 function isPointInCountry(pointCoords, countryGeometry) {
-    // ... function body ...
+    console.log(`Checking if point (${pointCoords.lat}, ${pointCoords.lon}) is in country...`);
+    
+    // For debug purposes, let's log the country geometry
+    console.log(`Country geometry type: ${countryGeometry.type}`);
+    if (countryGeometry.type === 'Polygon') {
+        console.log(`Number of polygon coordinate sets: ${countryGeometry.coordinates.length}`);
+        console.log(`First coordinates set length: ${countryGeometry.coordinates[0].length}`);
+    }
+    
+    // Convert coordinates to the format expected by turf.js
+    // We'll implement a simpler check since we don't have turf.js
+    
+    const type = countryGeometry.type;
+    const coordinates = countryGeometry.coordinates;
+    
+    // Normalize longitude values to handle crossing the date line
+    let testLon = pointCoords.lon;
+    while (testLon > 180) testLon -= 360;
+    while (testLon < -180) testLon += 360;
+    
+    if (type === 'Polygon') {
+        return pointInSphericalPolygon(pointCoords.lat, testLon, coordinates[0]);
+    } 
+    else if (type === 'MultiPolygon') {
+        for (let i = 0; i < coordinates.length; i++) {
+            if (pointInSphericalPolygon(pointCoords.lat, testLon, coordinates[i][0])) {
+                console.log(`Point found in MultiPolygon part ${i}`);
+                return true;
+            }
+        }
+    }
+    
+    console.log(`Point is NOT in country`);
     return false;
 }
-// --- End Point-in-Polygon Logic ---
+
+// Improved algorithm for point-in-polygon on a sphere
+function pointInSphericalPolygon(lat, lon, polygonCoords) {
+    // Convert to radians
+    const latRad = lat * Math.PI / 180;
+    const lonRad = lon * Math.PI / 180;
+    
+    // Convert point to cartesian coordinates
+    const pointX = Math.cos(latRad) * Math.cos(lonRad);
+    const pointY = Math.cos(latRad) * Math.sin(lonRad);
+    const pointZ = Math.sin(latRad);
+    
+    // Convert polygon coordinates to cartesian and calculate winding number
+    let windingNumber = 0;
+    
+    console.log(`Testing point (${lat}, ${lon}) against polygon with ${polygonCoords.length} points`);
+    
+    // Build a 2D array of longitude/latitude values
+    const polygonDegrees = [];
+    for (let i = 0; i < polygonCoords.length; i++) {
+        const coord = polygonCoords[i];
+        
+        // Ensure we're working with proper coordinates
+        if (Array.isArray(coord) && coord.length >= 2) {
+            // Normalize longitude values
+            let coordLon = coord[0];
+            while (coordLon > 180) coordLon -= 360;
+            while (coordLon < -180) coordLon += 360;
+            
+            polygonDegrees.push([coordLon, coord[1]]);
+        } else {
+            console.warn(`Invalid coordinate at index ${i}:`, coord);
+        }
+    }
+    
+    // Debug output of a few coordinates
+    for (let i = 0; i < Math.min(5, polygonDegrees.length); i++) {
+        console.log(`Polygon point ${i}: (${polygonDegrees[i][1]}, ${polygonDegrees[i][0]})`);
+    }
+    
+    // Use the winding number algorithm in longitude/latitude space
+    let inside = false;
+    for (let i = 0, j = polygonDegrees.length - 1; i < polygonDegrees.length; j = i++) {
+        const xi = polygonDegrees[i][0], yi = polygonDegrees[i][1];
+        const xj = polygonDegrees[j][0], yj = polygonDegrees[j][1];
+        
+        // Handle potential wrap-around near the date line
+        let dLon = xj - xi;
+        if (dLon > 180) dLon -= 360;
+        if (dLon < -180) dLon += 360;
+        
+        // We only need to check if the latitude of the test point is between the latitudes of the two endpoints
+        // and if the test point is to the right of the edge
+        if (((yi <= lat && lat < yj) || (yj <= lat && lat < yi)) && 
+            (lon < xi + dLon * (lat - yi) / (yj - yi))) {
+            inside = !inside;
+        }
+    }
+    
+    console.log(`Winding number check result: ${inside}`);
+    
+    // Add a more lenient distance check as a backup method
+    // If the point is very close to any of the polygon vertices, consider it inside
+    const TOLERANCE_KM = 20; // 20km tolerance
+    
+    for (let i = 0; i < polygonDegrees.length; i++) {
+        const vertexLat = polygonDegrees[i][1];
+        const vertexLon = polygonDegrees[i][0];
+        
+        const distance = calculateDistance(lat, lon, vertexLat, vertexLon);
+        if (distance < TOLERANCE_KM) {
+            console.log(`Point is within ${TOLERANCE_KM}km of vertex ${i} (${distance.toFixed(2)}km)`);
+            return true;
+        }
+    }
+    
+    // For very small countries, we'll add another check based on the distance to the center
+    // Calculate center of the polygon
+    let centerLat = 0, centerLon = 0;
+    for (let i = 0; i < polygonDegrees.length; i++) {
+        centerLat += polygonDegrees[i][1];
+        centerLon += polygonDegrees[i][0];
+    }
+    centerLat /= polygonDegrees.length;
+    centerLon /= polygonDegrees.length;
+    
+    // For small countries, a distance-based approach might be more reliable
+    const distanceToCenter = calculateDistance(lat, lon, centerLat, centerLon);
+    
+    // Estimate the "radius" of the country by checking distance from center to vertices
+    let maxRadiusKm = 0;
+    for (let i = 0; i < polygonDegrees.length; i++) {
+        const vertexLat = polygonDegrees[i][1];
+        const vertexLon = polygonDegrees[i][0];
+        
+        const distToVertex = calculateDistance(centerLat, centerLon, vertexLat, vertexLon);
+        maxRadiusKm = Math.max(maxRadiusKm, distToVertex);
+    }
+    
+    // Add a buffer zone
+    const bufferZone = Math.max(50, maxRadiusKm * 0.1); // Either 50km or 10% of the max radius
+    
+    console.log(`Country center: (${centerLat.toFixed(2)}, ${centerLon.toFixed(2)}), Max radius: ${maxRadiusKm.toFixed(2)}km`);
+    console.log(`Distance to center: ${distanceToCenter.toFixed(2)}km, Buffer zone: ${bufferZone.toFixed(2)}km`);
+    
+    // If close enough to center relative to country size, consider it a match
+    if (distanceToCenter < maxRadiusKm + bufferZone) {
+        console.log(`Point is within country radius + buffer zone (${(maxRadiusKm + bufferZone).toFixed(2)}km)`);
+        
+        // Only override if the country is small or the point is very close to the center
+        if (maxRadiusKm < 500 || distanceToCenter < maxRadiusKm * 0.5) {
+            console.log(`Considering point inside country due to proximity to center`);
+            return true;
+        }
+    }
+    
+    // Return the original check result
+    return inside;
+}
 
 // --- MOVED Handler function for the cloud toggle ---
 function handleCloudToggle(event) {
@@ -2970,4 +3221,25 @@ function updateGlobeTexture() {
     scene.add(globe);
 
     console.log(">>> Globe recreated and added to scene with new texture!");
+}
+
+// Add this near your other global variables
+const PERMANENT_BOUNDARIES = []; // Store permanent boundary objects
+
+// Modified removeHighlightedBoundaries to only remove temporary highlights
+function removeHighlightedBoundaries() {
+    // This now only removes temporary highlights (if any)
+    // Permanent boundaries remain in the scene
+    console.log("Removing temporary boundary highlights (if any)...");
+}
+
+// Add this function to clear ALL boundaries when needed (e.g., new game)
+function clearAllBoundaries() {
+    console.log("Clearing ALL boundary lines...");
+    PERMANENT_BOUNDARIES.forEach(line => {
+        if (line.geometry) line.geometry.dispose();
+        if (line.material) line.material.dispose();
+        scene.remove(line);
+    });
+    PERMANENT_BOUNDARIES.length = 0; // Clear the array
 }
