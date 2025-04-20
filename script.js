@@ -446,25 +446,18 @@ function initMap() {
 
     // --- OrbitControls Setup ---
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; // Enable damping for smoother movement
-    controls.dampingFactor = 0.05; // Adjust damping strength
-    controls.rotateSpeed = 0.4; // Adjust rotation speed
-    controls.panSpeed = 0.2; // Adjust panning speed
-    controls.enableZoom = true; // Enable zooming
-    controls.minDistance = EARTH_RADIUS + 0.5; // Prevent zooming inside the Earth
-    controls.maxDistance = EARTH_RADIUS * 5; // Limit zoom distance
-    controls.enablePan = true; // Enable panning
-    controls.zoomSpeed = 1.2; // Adjust zoom speed
-    controls.target.set(0, 0, 0); // Set the point to orbit around
-    controls.update();
+    controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
+    controls.dampingFactor = 0.05;
+    controls.screenSpacePanning = false;
+    controls.minDistance = 5;
+    controls.maxDistance = 15;
+    controls.maxPolarAngle = Math.PI;
 
-    // --- Disable vertical rotation below the horizon ---
-    controls.minPolarAngle = Math.PI * 0.1; // radians (0 is straight down)
-    controls.maxPolarAngle = Math.PI * 0.9; // radians (Math.PI/2 is straight up)
-
-    // --- Disable horizontal panning beyond a certain limit ---
-    controls.minAzimuthAngle = - Infinity; // radians
-    controls.maxAzimuthAngle = Infinity; // radians
+    // --- Reduce Sensitivity ---
+    controls.zoomSpeed = 0.5;   // Default is 1
+    controls.rotateSpeed = 0.5; // Default is 1
+    controls.panSpeed = 0.5; // Default is 1
+    // -------------------------
 
     // --- Add Event Listener for Zoom Ending ---
     controls.addEventListener('change', () => {
@@ -1164,7 +1157,7 @@ function selectRandomCountry() {
 
 async function startNewRound() {
     console.log("Starting new round...");
-    
+
     // Update the counter
     updateCountriesLeftCounter();
 
@@ -1537,7 +1530,9 @@ async function handleGuessConfirm() {
 
     let isGuessCorrect = false;
     let roundScore = 0;
-    let distance = null;
+    let distanceToCenter = null;
+    let distanceToBoundary = null;
+    let displayDistance = null;
 
     // --- Calculate True Center Vector FIRST (if geometry exists) ---
     // This block remains the same - it calculates targetCountryCenterVector
@@ -1560,91 +1555,95 @@ async function handleGuessConfirm() {
     const targetCenterLatLon = getLatLonFromPoint(targetCountryCenterVector);
     // --- End Conversion ---
 
+    // --- Calculate Distance to Center (for scoring) ---
+    distanceToCenter = calculateDistance(
+        playerGuess.lat, playerGuess.lon,
+        targetCenterLatLon.lat, targetCenterLatLon.lon
+    );
+    console.log(`Distance to center calculated: ${distanceToCenter} km (used for scoring)`);
+    // --- End Calculate Distance to Center ---
+
     // --- SCORING LOGIC with ADJUSTED CORRECTNESS CHECK ---
     if (currentCountry.geometry) {
-            distance = calculateDistance(
-                playerGuess.lat, playerGuess.lon,
-            targetCenterLatLon.lat, targetCenterLatLon.lon
-        );
-        
-        console.log(`Distance to country center: ${distance}km`);
-        
-        // --- ADJUST THESE THRESHOLDS ---
-        const PERFECT_THRESHOLD = 150;  // e.g., slightly larger perfect zone
-        const GOOD_THRESHOLD = 750;     // Increased good threshold (will make 402km green)
+        console.log(`Distance to country center (for scoring): ${distanceToCenter}km`);
+
+        // --- ADJUST THESE THRESHOLDS (Consider different values for boundary vs center) ---
+        const PERFECT_THRESHOLD_CENTER = 150;  // Perfect guess to center
+        const GOOD_THRESHOLD_CENTER = 750;     // Good guess to center
         // -----------------------------
-        
-        if (distance <= PERFECT_THRESHOLD) {
-            console.log(`PERFECT GUESS! Distance (${distance}km) <= ${PERFECT_THRESHOLD}km`);
-            roundScore = 1000; 
-            isGuessCorrect = true;
-        } 
-        else if (distance <= GOOD_THRESHOLD) {
-            console.log(`GOOD GUESS! Distance (${distance}km) <= ${GOOD_THRESHOLD}km`);
-            // Adjust scoring if desired, or keep it simple
-            roundScore = 900 - Math.floor((distance - PERFECT_THRESHOLD) / 2); // Example scoring adjustment
-            isGuessCorrect = true; // Mark as correct (green)
-        }
-        else if (distance <= 3000) {
-            console.log(`CLOSE GUESS. Distance (${distance}km) <= 3000km`);
-                roundScore = 2000 - distance;
-            isGuessCorrect = false; // Red highlight
-        } 
-        else {
-            console.log(`FAR GUESS. Distance (${distance}km) > 3000km`);
-                roundScore = 0;
-            isGuessCorrect = false; // Red highlight
-        }
-        
-        // Keep the polygon check as an override
+
         const isInside = isPointInCountry(playerGuess, currentCountry.geometry);
         console.log(`For reference, polygon check says isInside = ${isInside}`);
         if (isInside) {
-            console.log("Polygon check shows point is INSIDE - overriding distance check");
-            isGuessCorrect = true; // Ensure green if inside
-            if (roundScore < 1000) {
-                 roundScore = 1000; 
-            }
-        }
-
-    } else {
-        // Fallback logic using the same adjusted thresholds
-        console.warn("No boundary data for country, using distance-based scoring only.");
-        distance = calculateDistance(
-            playerGuess.lat, playerGuess.lon,
-            targetCenterLatLon.lat, targetCenterLatLon.lon
-        );
-        
-        const PERFECT_THRESHOLD = 150; 
-        const GOOD_THRESHOLD = 750;     
-
-        if (distance <= PERFECT_THRESHOLD) {
+            console.log("Polygon check shows point is INSIDE - awarding max score");
             roundScore = 1000;
             isGuessCorrect = true;
-        } else if (distance <= GOOD_THRESHOLD) {
-            roundScore = 900 - Math.floor((distance - PERFECT_THRESHOLD) / 2);
+            distanceToBoundary = 0; // Set boundary distance to 0
+        } else {
+            distanceToBoundary = null; // Set to null since we're not using it
+        }
+
+        // --- Scoring based on distance to CENTER ---
+        if (isInside) {
+            console.log("Polygon check shows point is INSIDE - overriding distance check");
+            isGuessCorrect = true; // Ensure green if inside
+            roundScore = 1000;
+            } else {
+            if (distanceToCenter <= PERFECT_THRESHOLD_CENTER) {
+                console.log(`PERFECT GUESS (Center)! Distance (${distanceToCenter}km) <= ${PERFECT_THRESHOLD_CENTER}km`);
+                roundScore = 1000;
+                isGuessCorrect = true;
+            } else if (distanceToCenter <= GOOD_THRESHOLD_CENTER) {
+                console.log(`GOOD GUESS (Center)! Distance (${distanceToCenter}km) <= ${GOOD_THRESHOLD_CENTER}km`);
+                // Adjust scoring if desired
+                roundScore = 900 - Math.floor((distanceToCenter - PERFECT_THRESHOLD_CENTER) / 2);
+                isGuessCorrect = true; // Mark as correct (green)
+            } else {
+                console.log(`FAR GUESS (Center). Distance (${distanceToCenter}km) > ${GOOD_THRESHOLD_CENTER}km`);
+                roundScore = 200 - Math.floor(distanceToCenter / 10); // Reduced score
+                isGuessCorrect = false; // Red highlight
+            }
+        }
+        displayDistance = distanceToCenter; // Use distance to center for display
+    } else {
+        // Fallback logic using distanceToCenter
+        console.warn("No boundary data for country, using distance-based scoring only.");
+        const PERFECT_THRESHOLD = 150;
+        const GOOD_THRESHOLD = 750;
+
+        if (distanceToCenter <= PERFECT_THRESHOLD) {
+            roundScore = 1000;
             isGuessCorrect = true;
-        } else if (distance <= 3000) {
-            roundScore = 2000 - distance;
+        } else if (distanceToCenter <= GOOD_THRESHOLD) {
+            roundScore = 900 - Math.floor((distanceToCenter - PERFECT_THRESHOLD) / 2);
+            isGuessCorrect = true;
+        } else if (distanceToCenter <= 3000) {
+            roundScore = 2000 - distanceToCenter;
             isGuessCorrect = false; // Keep false for red highlight
         } else {
             roundScore = 0;
             isGuessCorrect = false; // Keep false for red highlight
         }
+        distanceToBoundary = null;
+        displayDistance = distanceToCenter; // Use distance to center for display
     }
-    
+
     roundScore = Math.max(0, roundScore); // Ensure score isn't negative
-    
-    console.log(`Final determination: isGuessCorrect = ${isGuessCorrect}, Distance = ${distance}km, Score = ${roundScore}`);
-    
+
+    console.log(`Final determination: isGuessCorrect = ${isGuessCorrect}, Score = ${roundScore}`);
+    console.log(`Distance to Center: ${distanceToCenter} km`);
+    console.log(`Distance to Boundary: ${distanceToBoundary !== null ? distanceToBoundary + ' km' : 'N/A (no geometry or inside)'}`);
+
+    // --- Determine Display Distance ---
+    displayDistance = distanceToCenter; // Use distance to center for display
+    // --- End Determine Display Distance ---
+
     // ... existing score updates, etc. ...
 
     // Highlight boundary using the determined isGuessCorrect value
     if (currentCountry.geometry) {
-        // --- REMOVE the isGuessCorrect argument ---
         console.log(`Calling highlightCountryBoundary`); // Updated log
-        highlightCountryBoundary(currentCountry.geometry); 
-        // ------------------------------------------
+        highlightCountryBoundary(currentCountry.geometry);
     } else {
         console.warn("Skipping boundary highlight because geometry is missing.");
     }
@@ -1652,14 +1651,21 @@ async function handleGuessConfirm() {
     // ... rest of function ...
 
     // Update total score and UI
-    score += currentRoundScore; // <<< CORRECTED LINE
+    // <<< SCORE UPDATE SHOULD BE HANDLED AFTER TIME PENALTY >>>
+    // score += currentRoundScore; // <<< MOVE THIS LATER
 
-    distanceElement.textContent = distance !== null ? `${distance}` : 'Error';
+    // --- Update UI with DISPLAY Distance ---
+    const roundedDisplayDistance = displayDistance !== null ? Math.round(displayDistance) : null;
+    distanceElement.textContent = roundedDisplayDistance !== null ? `${roundedDisplayDistance}` : 'Error';
+    console.log(`UI Distance Element updated with: ${roundedDisplayDistance} km`);
+    // --- End Update UI ---
+
 
     // Display Distance Text Above Pin
-    if (distanceTextSprite && pinSprite && distance !== null) {
+    // <<< Use roundedDisplayDistance here too >>>
+    if (distanceTextSprite && pinSprite && roundedDisplayDistance !== null) {
         distanceContext.clearRect(0, 0, distanceCanvas.width, distanceCanvas.height);
-        const distanceString = `${distance} km`;
+        const distanceString = `${roundedDisplayDistance} km`; // Use the final display distance
         distanceContext.fillText(distanceString, distanceCanvas.width / 2, distanceCanvas.height / 2);
         distanceTexture.needsUpdate = true;
         const pinPosition = pinSprite.position;
@@ -1669,18 +1675,21 @@ async function handleGuessConfirm() {
         distanceTextSprite.position.copy(textPosition);
         distanceTextSprite.visible = true;
         console.log(`Displaying distance text "${distanceString}" above pin.`);
+    } else if (distanceTextSprite) {
+        distanceTextSprite.visible = false; // Hide if distance is null
     }
 
 
     // Log results
     console.log(`Guessed: ${playerGuess.lat.toFixed(2)}, ${playerGuess.lon.toFixed(2)}`);
     // console.log(`Actual (Center Point): ${currentCountry.lat.toFixed(2)}, ${currentCountry.lon.toFixed(2)}`); // Keep or remove this log
-    console.log(`Target Center (Lat/Lon Used for Dist): ${targetCenterLatLon.lat.toFixed(2)}, ${targetCenterLatLon.lon.toFixed(2)}`); // Log the derived coords
+    console.log(`Target Center (Lat/Lon Used for Dist Calc): ${targetCenterLatLon.lat.toFixed(2)}, ${targetCenterLatLon.lon.toFixed(2)}`); // Log the derived coords
     console.log(`Target Center (Calculated Geometry Center 3D): (${targetCountryCenterVector.x.toFixed(2)}, ${targetCountryCenterVector.y.toFixed(2)}, ${targetCountryCenterVector.z.toFixed(2)})`); // Log the used vector
-    console.log(`Distance: ${distance} km, Score: ${roundScore}`);
+    console.log(`Final Score (before time penalty): ${roundScore}`); // Log score before penalty
 
 
     // --- Draw distance line AND Prepare Curve ---
+    // ... (line drawing logic remains the same, uses targetCountryCenterVector) ...
     const startVec = pinSprite.position.clone().normalize().multiplyScalar(EARTH_RADIUS);
     const endVec = targetCountryCenterVector.clone();
     const points = [];
@@ -1809,26 +1818,79 @@ async function handleGuessConfirm() {
 
     // Add this new helper function
     function calculateDistanceToBoundary(lat, lon, geometry) {
-        // Convert geometry to array of boundary points
-        const boundaryPoints = [];
-        if (geometry.type === 'Polygon') {
-            boundaryPoints.push(...geometry.coordinates[0]);
-        } 
-        else if (geometry.type === 'MultiPolygon') {
-            geometry.coordinates.forEach(polygon => {
-                boundaryPoints.push(...polygon[0]);
-            });
+        if (!geometry || !geometry.coordinates) {
+            console.warn("No geometry or coordinates provided to calculateDistanceToBoundary");
+            return null;
         }
 
-        // Find minimum distance to any boundary point
         let minDistance = Infinity;
-        boundaryPoints.forEach(point => {
-            const [pointLon, pointLat] = point;
-            const dist = calculateDistance(lat, lon, pointLat, pointLon);
-            if (dist < minDistance) minDistance = dist;
-        });
 
+        // Iterate through the coordinates of the geometry
+        for (const polygon of geometry.coordinates) {
+            for (let i = 0; i < polygon.length; i++) {
+                const p1 = polygon[i];
+                const p2 = polygon[(i + 1) % polygon.length]; // Wrap around to the first point for the last segment
+
+                // Convert coordinates to radians
+                const latRad = deg2rad(lat);
+                const lonRad = deg2rad(lon);
+                const p1LatRad = deg2rad(p1[1]);
+                const p1LonRad = deg2rad(p1[0]);
+                const p2LatRad = deg2rad(p2[1]);
+                const p2LonRad = deg2rad(p2[0]);
+
+                // --- Calculate distance from point to great circle segment ---
+                const distToSegment = distanceToGreatCircleSegment(latRad, lonRad, p1LatRad, p1LonRad, p2LatRad, p2LonRad);
+
+                if (distToSegment < minDistance) {
+                    minDistance = distToSegment;
+                }
+            }
+        }
+
+        if (minDistance === Infinity) {
+            console.warn("Could not calculate distance to boundary (likely no valid geometry)");
+            return null;
+        }
+
+        console.log(`Minimum distance to boundary: ${minDistance} km`);
         return minDistance;
+    }
+
+    // --- Helper function to calculate distance to great circle segment ---
+    function distanceToGreatCircleSegment(latRad, lonRad, p1LatRad, p1LonRad, p2LatRad, p2LonRad) {
+        // Convert lat/lon to 3D Cartesian coordinates
+        const point = getPointFromLatLon(rad2deg(latRad), rad2deg(lonRad));
+        const p1 = getPointFromLatLon(rad2deg(p1LatRad), rad2deg(p1LonRad));
+        const p2 = getPointFromLatLon(rad2deg(p2LatRad), rad2deg(p2LonRad));
+
+        // Calculate the normalized vector from p1 to p2
+        const segmentVector = new THREE.Vector3().subVectors(p2, p1).normalize();
+
+        // Calculate the vector from p1 to the point
+        const pointVector = new THREE.Vector3().subVectors(point, p1);
+
+        // Project the pointVector onto the segmentVector
+        const projection = pointVector.dot(segmentVector);
+
+        // Calculate the closest point on the segment
+        let closestPoint;
+        if (projection < 0) {
+            closestPoint = p1; // Closest point is p1
+        } else if (projection > p2.distanceTo(p1)) {
+            closestPoint = p2; // Closest point is p2
+         } else {
+            closestPoint = new THREE.Vector3().copy(p1).add(segmentVector.multiplyScalar(projection)); // Closest point is on the segment
+        }
+
+        // Calculate the distance from the point to the closest point
+        const distance = point.distanceTo(closestPoint);
+
+        return distance * EARTH_RADIUS; // Convert to kilometers
+    }
+
+    function rad2deg(rad) {
+        return rad * (180 / Math.PI);
     }
 }
 
@@ -1836,83 +1898,40 @@ async function handleGuessConfirm() {
 
 // Function to create or update the pin sprite
 function createOrUpdatePin(position) {
-    const isNewPin = !pinSprite;
-    const currentScale = getPinScale();
-
-    if (!pinSprite) {
-        // <<< ADD polygonOffset to the pin material >>>
-        const pinMaterial = new THREE.SpriteMaterial({
-            map: null, // Start with no map
-            color: PIN_COLOR_DEFAULT.clone(),
-            depthTest: true,        // Keep depth testing enabled
-            depthWrite: false,      // Keep depth write disabled (sprites often don't write depth)
-            sizeAttenuation: false, // Keep pin size constant regardless of distance
-            polygonOffset: true,     // Enable polygon offset
-            polygonOffsetFactor: -2.0, // Push slightly more than lines, maybe? Adjust if needed.
-            polygonOffsetUnits: -2.0
-        });
-        // <<< END Add polygonOffset >>>
-
-
-        pinSprite = new THREE.Sprite(pinMaterial);
-        pinSprite.scale.set(currentScale, currentScale, currentScale);
-        pinSprite.center.set(0.5, 0);
-
-        // Load texture and update the *existing* sprite's material
-        const pinTexture = new THREE.TextureLoader().load(
-            PIN_IMAGE_PATH,
-            (texture) => { // On Load
-                if (pinSprite) {
-                    pinSprite.material.map = texture;
-                    pinSprite.material.needsUpdate = true;
-                    pinSprite.position.copy(position);
-                    scene.add(pinSprite);
-                    console.log("Pin sprite created and texture loaded.");
-                    if (isNewPin) playSound('pinPlace');
-
-                    // <<< ADDED: Log button state *after* texture load (for info only) >>>
-                    if (guessButton) {
-                         console.log(`createOrUpdatePin (Texture Loaded): guessButton.disabled is currently ${guessButton.disabled}`);
-                    }
-
-                } else { /* ... cleanup ... */ }
-            },
-            undefined, // Progress
-            (err) => { console.error("Error loading pin texture:", err); } // On Error
-        );
-
-    } else { // Pin already exists
-        pinSprite.position.copy(position);
-        playSound('pinPlace');
+    // Normalize the position vector to get the surface normal
+    const surfaceNormal = position.clone().normalize();
+    
+    // Define an offset to keep the pin above the surface
+    const PIN_OFFSET = 0.05; // Adjust this value as needed (0.05 = 5% of Earth radius)
+    
+    // Calculate the pin position by moving it slightly outward along the normal
+    const pinPosition = position.clone().addScaledVector(surfaceNormal, PIN_OFFSET);
+    
+    // Remove existing pin if it exists
+    if (pinSprite) {
+        scene.remove(pinSprite);
+        pinSprite = null;
     }
-    // Update player guess coordinates
-    playerGuess = getLatLonFromPoint(position);
-
-    // <<< ADD DETAILED LOGS >>>
-    console.log(`createOrUpdatePin: Attempting to evaluate button state.`);
-    console.log(`createOrUpdatePin: Current value of isGuessLocked = ${isGuessLocked}`);
-    console.log(`createOrUpdatePin: Checking guessButton element:`, guessButton);
-    // <<< END DETAILED LOGS >>>
-
-
-    // --- Enable GUESS button ONLY ---
-    if (!isGuessLocked) {
-         console.log("createOrUpdatePin: Condition !isGuessLocked is TRUE."); // Log condition success
-         if (guessButton) {
-             console.log("createOrUpdatePin: guessButton element exists. Setting disabled = false."); // Log intent
-             guessButton.disabled = false; // Enable the button
-             console.log(`createOrUpdatePin: guessButton.disabled is now ${guessButton.disabled}`); // Confirm result
-         } else {
-             console.warn("createOrUpdatePin: guessButton element not found. Cannot enable.");
-         }
-         // Ensure nextButton remains disabled
-         if (nextButton && nextButton.disabled !== true) {
-             console.warn("createOrUpdatePin: Forcing nextButton back to disabled.");
-             nextButton.disabled = true;
-         }
-    } else {
-         console.log("createOrUpdatePin: Condition !isGuessLocked is FALSE. Guess button NOT enabled."); // Log condition failure
-    }
+    
+    // Create new pin
+    const pinMaterial = new THREE.SpriteMaterial({
+        map: pinTexture,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1.0
+    });
+    
+    pinSprite = new THREE.Sprite(pinMaterial);
+    pinSprite.position.copy(pinPosition);
+    
+    // Scale the pin appropriately
+    const distance = camera.position.distanceTo(pinPosition);
+    const scale = getPinScale(distance);
+    pinSprite.scale.set(scale, scale, scale);
+    
+    // Add pin to scene
+    scene.add(pinSprite);
+    console.log("Pin created/updated at position:", pinPosition);
 }
 
 // Function to remove the pin
