@@ -56,10 +56,11 @@ let backgroundMusicStarted = false; // <<< ADDED FLAG
 let isStartingNextRound = false; // <<< ADD NEW FLAG
 let showBoundaries = false; // <<< ADD: Variable to track boundary display choice
 let globeInitialized = false; // Add a flag to track if the globe is initialized
+let remainingCountries = []; // <<< ADD: List of countries for the current game session
 
 // --- Three.js Variables ---
 // Ensure 'globe' is declared here globally, and remove 'globeMesh' if it exists elsewhere
-let scene, camera, renderer, globe, controls, raycaster, mouse; 
+let scene, camera, renderer, globe, controls, raycaster, mouse;
 // ... other global vars ...
 let globeMaterial; // Add global reference for material if needed for updates
 // let globeMesh; // <<< REMOVE THIS if it exists elsewhere
@@ -349,12 +350,12 @@ function initMap() {
         normalMap: normalTexture,
         roughnessMap: roughnessTexture,
         displacementMap: displacementTexture,
-        displacementScale: 0.2,
+        displacementScale: 0.1, // <<< REDUCED value (was 0.2)
     });
 
     // --- Globe Mesh ---
     // Use the global 'globe' variable
-    globe = new THREE.Mesh(globeGeometry, globeMaterial); 
+    globe = new THREE.Mesh(globeGeometry, globeMaterial);
     globe.receiveShadow = true;
     scene.add(globe); // Add the single, global globe object
     console.log(">>> initMap: Initial globe mesh created and added to scene.");
@@ -922,60 +923,159 @@ function getPolygonPoints3D(polygonCoords, offset) {
 }
 
 // --- Function to highlight country boundaries ---
-function highlightCountryBoundary(countryGeometry, isCorrect = false) {
-    console.log(`[highlightCountryBoundary] isCorrect: ${isCorrect}`);
+// REMOVED isCorrect parameter
+function highlightCountryBoundary(countryGeometry) {
+    console.log(`[highlightCountryBoundary] START.`); // Log start
 
     if (!countryGeometry) {
-        console.warn("Cannot highlight boundary: Geometry data missing.");
+        console.warn("[highlightCountryBoundary] Cannot highlight boundary: Geometry data missing.");
         return;
     }
-
-    const boundaryOffset = 0.05;
     
-    // Create YELLOW boundary material (permanent)
+    // --- DO NOT REMOVE HIGHLIGHTS HERE ANYMORE ---
+    // removeHighlightedBoundaries(); // <<< COMMENTED OUT or REMOVED
+
+    const boundaryOffset = 0.05; 
+    
+    // --- SET COLORS TO YELLOW ---
+    const fillColor = 0xFFFF00; // Yellow
+    const lineColor = 0xFFFF00; // Yellow
+    // --------------------------
+
+    // --- REMOVED LOG: No longer needed ---
+    // console.log(`[highlightCountryBoundary] Determined fillColor: 0x${fillColor.toString(16)} (${isCorrect ? 'Green' : 'Red'})`);
+    // -------------------------------------------------
+
+    // Create material for the boundary lines
     const boundaryMaterial = new THREE.LineBasicMaterial({
-        color: 0xFFFF00, // Yellow
+        color: lineColor, // Use yellow
         linewidth: 2,
         depthTest: true,
         depthWrite: false,
-        transparent: false, // Solid
-        opacity: 1.0,
+        transparent: true,
+        opacity: 0.9,
         polygonOffset: true,
         polygonOffsetFactor: -2.0,
         polygonOffsetUnits: -2.0
     });
 
+    // Create material for filled area
+    const fillMaterial = new THREE.MeshBasicMaterial({
+        color: fillColor, // Use yellow
+        transparent: true,
+        opacity: 0.4, 
+        side: THREE.DoubleSide,
+        depthTest: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1.0,
+        polygonOffsetUnits: -1.0
+    });
+
+    // --- REMOVED LOG: No longer needed ---
+    // console.log(`[highlightCountryBoundary] Created fillMaterial with color: 0x${fillMaterial.color.getHexString()}`);
+    // ------------------------------------------------------
+
     const type = countryGeometry.type;
     const coordinates = countryGeometry.coordinates;
 
+    console.log(`[highlightCountryBoundary] Geometry type: ${type}, Offset: ${boundaryOffset}`);
+
     try {
+        let linesAdded = 0;
+        let meshesAdded = 0;
+        
         if (type === 'Polygon') {
             const outerRingCoords = coordinates[0];
             const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
             
-            if (points3D.length >= 2) {
-                const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial);
+            if (points3D.length >= 3) {
+                // Create the boundary line
+                const lineGeometry = new THREE.BufferGeometry().setFromPoints(points3D);
+                const lineLoop = new THREE.LineLoop(lineGeometry, boundaryMaterial);
                 scene.add(lineLoop);
-                PERMANENT_BOUNDARIES.push(lineLoop); // Store in permanent array
+                highlightedBoundaryLines.push(lineLoop); // Add to array
+                linesAdded++;
+                
+                // Create the filled shape
+                const shape = new THREE.Shape();
+                const firstPoint = points3D[0];
+                const normal = firstPoint.clone().normalize();
+                const tangentBasis = createTangentBasis(normal);
+                const projectedPoints = points3D.map(p => projectPointToPlane(p, normal, tangentBasis, firstPoint));
+                shape.moveTo(projectedPoints[0].x, projectedPoints[0].y);
+                for (let i = 1; i < projectedPoints.length; i++) {
+                    shape.lineTo(projectedPoints[i].x, projectedPoints[i].y);
+                }
+                shape.closePath();
+                const shapeGeometry = new THREE.ShapeGeometry(shape);
+                transformShapeBackTo3D(shapeGeometry, normal, tangentBasis, firstPoint);
+                
+                // --- REMOVED LOG ---
+                // console.log(`[highlightCountryBoundary] Polygon: Adding mesh with material color: 0x${fillMaterial.color.getHexString()}`);
+                // -------------------------------------------------
+                const shapeMesh = new THREE.Mesh(shapeGeometry, fillMaterial); 
+                scene.add(shapeMesh);
+                highlightedBoundaryLines.push(shapeMesh); // Add to array
+                meshesAdded++;
             }
-        } 
-        else if (type === 'MultiPolygon') {
+        } else if (type === 'MultiPolygon') {
             for (let i = 0; i < coordinates.length; i++) {
                 const polygon = coordinates[i];
                 const outerRingCoords = polygon[0];
                 const points3D = getPolygonPoints3D(outerRingCoords, boundaryOffset);
                 
-                if (points3D.length >= 2) {
-                    const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-                    const lineLoop = new THREE.LineLoop(geometry, boundaryMaterial.clone());
+                if (points3D.length >= 3) {
+                    // Create the boundary line
+                    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points3D);
+                    const lineLoop = new THREE.LineLoop(lineGeometry, boundaryMaterial.clone()); // Clone line material
                     scene.add(lineLoop);
-                    PERMANENT_BOUNDARIES.push(lineLoop); // Store in permanent array
+                    highlightedBoundaryLines.push(lineLoop); // Add to array
+                     linesAdded++;
+                    
+                    // Create the filled shape
+                    const firstPoint = points3D[0];
+                    const normal = firstPoint.clone().normalize();
+                    const tangentBasis = createTangentBasis(normal);
+                    const projectedPoints = points3D.map(p => projectPointToPlane(p, normal, tangentBasis, firstPoint));
+                    const shape = new THREE.Shape();
+                    shape.moveTo(projectedPoints[0].x, projectedPoints[0].y);
+                    for (let i = 1; i < projectedPoints.length; i++) {
+                        shape.lineTo(projectedPoints[i].x, projectedPoints[i].y);
+                    }
+                    shape.closePath();
+                    const shapeGeometry = new THREE.ShapeGeometry(shape);
+                    transformShapeBackTo3D(shapeGeometry, normal, tangentBasis, firstPoint);
+
+                    // Explicitly create a new material instance for each part
+                    const partFillMaterial = new THREE.MeshBasicMaterial({
+                        color: fillColor, // Use yellow
+                        transparent: true,
+                        opacity: 0.4, 
+                        side: THREE.DoubleSide,
+                        depthTest: true,
+                        depthWrite: false,
+                        polygonOffset: true,
+                        polygonOffsetFactor: -1.0,
+                        polygonOffsetUnits: -1.0
+                    });
+
+                    // --- REMOVED LOG ---
+                    // console.log(`[highlightCountryBoundary] MultiPolygon part ${i}: Adding mesh with material color: 0x${partFillMaterial.color.getHexString()}`);
+                    // -------------------------------------------------
+                    const shapeMesh = new THREE.Mesh(shapeGeometry, partFillMaterial); 
+                    scene.add(shapeMesh);
+                    highlightedBoundaryLines.push(shapeMesh); // Add to array
+                    meshesAdded++;
                 }
             }
         }
+
+        console.log(`[highlightCountryBoundary] Highlighting finished. Lines added: ${linesAdded}, Meshes added: ${meshesAdded}. Total highlighted objects: ${highlightedBoundaryLines.length}`);
     } catch (error) {
-        console.error("Error creating boundary highlight:", error);
+        console.error("[highlightCountryBoundary] Error creating boundary highlight:", error);
+        // Don't attempt removal on error if we want them to persist
+        // removeHighlightedBoundaries(); 
     }
 }
 
@@ -1037,95 +1137,109 @@ function transformShapeBackTo3D(geometry, normal, basis, originPoint) {
 
 // --- Function to remove highlighted boundaries ---
 function removeHighlightedBoundaries() {
-    // This now only removes temporary highlights (if any)
-    // Permanent boundaries remain in the scene
-    console.log("Removing temporary boundary highlights (if any)...");
+    if (highlightedBoundaryLines.length > 0) {
+        console.log("Removing previous boundary highlights...");
+        highlightedBoundaryLines.forEach(line => {
+            if (line.geometry) line.geometry.dispose();
+            if (line.material) line.material.dispose();
+            scene.remove(line);
+        });
+        highlightedBoundaryLines = [];
+    }
 }
 
 // --- Game Logic ---
 function selectRandomCountry() {
-    if (countriesData.length === 0) {
-        console.error("No country data loaded!");
-        return null;
+    // --- MODIFIED: Select from the remaining shuffled list ---
+    if (remainingCountries.length === 0) {
+        console.log("No more countries remaining in the list.");
+        return null; // Signal that the game should end
     }
-    const randomIndex = Math.floor(Math.random() * countriesData.length);
-    return countriesData[randomIndex];
+    // Take the next country from the front of the shuffled list
+    const nextCountry = remainingCountries.shift(); // Removes and returns the first element
+    console.log(`Selected country ${nextCountry.name}. ${remainingCountries.length} countries remaining.`);
+    return nextCountry;
+    // --- END MODIFICATION ---
 }
 
 async function startNewRound() {
-    // --- Log Function Start ---
-    console.log(">>> startNewRound: Function START.");
-
-    // --- REMOVE the targeted removal block from here ---
-    /*
-    console.log(">>> startNewRound: Targeted removal by custom property.");
-    try {
-        scene.children.slice().forEach(child => {
-            if (child.isTravelLine === true) {
-                // ... removal code ...
-            }
-        });
-        currentDistanceLine = null; // Ensure it's nulled
-        console.log(">>> startNewRound: Targeted objects removed and currentDistanceLine nulled.");
-    } catch (error) {
-        console.error(">>> startNewRound: Error during targeted removal:", error);
-    }
-    */
-    // --- END REMOVE ---
-
-    // --- Main Function Body ---
     console.log("Starting new round...");
-    // ... (stopping sounds) ...
+    
+    // Update the counter
+    updateCountriesLeftCounter();
 
-    // --- Reset state flags and variables ---
+    // ... (resetting sounds, flags, visuals) ...
     isLineAnimating = false;
     isCameraFollowing = false;
-    currentLineCurve = null;
-    currentDistanceLine = null; // <<< ENSURE currentDistanceLine is nulled here
-    console.log(">>> startNewRound: Nulled currentDistanceLine variable.");
-    // --- End Reset ---
 
-
-    // Reset controls
-    // ...
+    // Ensure controls are enabled and target is reset
+    if (!controls.enabled) {
+        console.log("Controls were disabled, re-enabling in startNewRound.");
+        controls.enabled = true;
+    }
     controls.target.set(0, 0, 0);
-    controls.update();
+    controls.update(); // Update controls state
 
+    // ... (hiding panel, resetting guess state, removing visuals) ...
     hideCountryInfoPanel();
     isGuessLocked = false;
-
-    // Remove other visuals
+    currentLineCurve = null;
     removePin();
     removeTargetRings();
-    removeHighlightedBoundaries();
+    // --- PREVENT BOUNDARY REMOVAL ---
+    // removeHighlightedBoundaries(); // <<< COMMENT OUT OR DELETE THIS LINE
+    // --------------------------------
+    if (currentDistanceLine) { /* ... remove line ... */ }
+    if (distanceTextSprite) distanceTextSprite.visible = false;
+    if (scoreSprite) scoreSprite.visible = false;
+    if (countryLabelSprite) countryLabelSprite.visible = false;
 
-    // Hide sprites
-    // ...
 
-    // Select new country
-    // ...
+    currentCountry = selectRandomCountry(); // Get the next country from the shuffled list
 
-    // Reset UI elements
-    // ...
+    // --- GAME OVER CHECK ---
+    if (!currentCountry) {
+        console.log(">>> GAME OVER: No more countries left to guess!");
+        // Display Game Over message
+        document.getElementById('country-name-display').innerText = "GAME OVER!";
+        distanceElement.textContent = `Final Score: ${score}`; // Show final score
+        // Optionally hide timer or other elements
+        document.getElementById('timer-display').style.visibility = 'hidden';
+        // Disable buttons permanently for this session
+        if (guessButton) guessButton.disabled = true;
+        if (nextButton) {
+             nextButton.disabled = true;
+             // Consider adding a 'Play Again' button visibility toggle here
+        }
+        // Maybe show a game over overlay or modal
+        // You could re-purpose the startModal or create a new one
+        // e.g., const gameOverModal = document.getElementById('game-over-modal');
+        //       if (gameOverModal) gameOverModal.classList.remove('hidden');
 
-    // Check geometry
-    // ...
+        return; // Stop the function here
+    }
+    // --- END GAME OVER CHECK ---
 
-    // Reset animated score
-    // ...
+    console.log(`Selected country: ${currentCountry.name}`);
 
-    // Disable Buttons
-    // ...
+    // ... (update UI elements like distance, country name) ...
+    distanceElement.textContent = 'N/A';
+    document.getElementById('country-name-display').innerText = currentCountry.name;
+    document.getElementById('timer-display').style.visibility = 'visible'; // Ensure timer is visible
+    resetTimerDisplay(); // Reset timer display text
 
-    // Start the timer
-    // ...
+    // --- START THE TIMER ---
+    startTimer(); // <<< THIS IS WHERE THE TIMER BEGINS FOR THE ROUND
+    // ---------------------
+
+    // --- Disable Buttons ---
+    if (guessButton) guessButton.disabled = true;
+    if (nextButton) nextButton.disabled = true;
+    if (nextButton) nextButton.style.display = 'block'; // Ensure visible but disabled
 
     console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}. Timer started.`);
 
     // --- NO flag reset here (handled in listener) ---
-
-    // Clear previous permanent boundaries
-    clearAllBoundaries();
 }
 
 function handleMapClick(event) {
@@ -1424,7 +1538,7 @@ async function handleGuessConfirm() {
     let isGuessCorrect = false;
     let roundScore = 0;
     let distance = null;
-    
+
     // --- Calculate True Center Vector FIRST (if geometry exists) ---
     // This block remains the same - it calculates targetCountryCenterVector
     if (currentCountry.geometry) {
@@ -1448,8 +1562,8 @@ async function handleGuessConfirm() {
 
     // --- SCORING LOGIC with ADJUSTED CORRECTNESS CHECK ---
     if (currentCountry.geometry) {
-        distance = calculateDistance(
-            playerGuess.lat, playerGuess.lon,
+            distance = calculateDistance(
+                playerGuess.lat, playerGuess.lon,
             targetCenterLatLon.lat, targetCenterLatLon.lon
         );
         
@@ -1473,12 +1587,12 @@ async function handleGuessConfirm() {
         }
         else if (distance <= 3000) {
             console.log(`CLOSE GUESS. Distance (${distance}km) <= 3000km`);
-            roundScore = 2000 - distance;
+                roundScore = 2000 - distance;
             isGuessCorrect = false; // Red highlight
         } 
         else {
             console.log(`FAR GUESS. Distance (${distance}km) > 3000km`);
-            roundScore = 0;
+                roundScore = 0;
             isGuessCorrect = false; // Red highlight
         }
         
@@ -1527,7 +1641,12 @@ async function handleGuessConfirm() {
 
     // Highlight boundary using the determined isGuessCorrect value
     if (currentCountry.geometry) {
-        highlightCountryBoundary(currentCountry.geometry, isGuessCorrect);
+        // --- REMOVE the isGuessCorrect argument ---
+        console.log(`Calling highlightCountryBoundary`); // Updated log
+        highlightCountryBoundary(currentCountry.geometry); 
+        // ------------------------------------------
+    } else {
+        console.warn("Skipping boundary highlight because geometry is missing.");
     }
 
     // ... rest of function ...
@@ -2295,6 +2414,10 @@ function setupEventListeners() {
 // --- Ensure timer starts in startNewRound ---
 async function startNewRound() {
     console.log("Starting new round...");
+    
+    // Update the counter
+    updateCountriesLeftCounter();
+
     // ... (resetting sounds, flags, visuals) ...
     isLineAnimating = false;
     isCameraFollowing = false;
@@ -2313,24 +2436,46 @@ async function startNewRound() {
     currentLineCurve = null;
     removePin();
     removeTargetRings();
-    removeHighlightedBoundaries();
+    // --- PREVENT BOUNDARY REMOVAL ---
+    // removeHighlightedBoundaries(); // <<< COMMENT OUT OR DELETE THIS LINE
+    // --------------------------------
     if (currentDistanceLine) { /* ... remove line ... */ }
     if (distanceTextSprite) distanceTextSprite.visible = false;
     if (scoreSprite) scoreSprite.visible = false;
     if (countryLabelSprite) countryLabelSprite.visible = false;
 
 
-    currentCountry = selectRandomCountry();
-    console.log(`Selected country: ${currentCountry ? currentCountry.name : 'None'}`);
+    currentCountry = selectRandomCountry(); // Get the next country from the shuffled list
 
+    // --- GAME OVER CHECK ---
     if (!currentCountry) {
-        // ... (error handling) ...
-        return;
-    }
+        console.log(">>> GAME OVER: No more countries left to guess!");
+        // Display Game Over message
+        document.getElementById('country-name-display').innerText = "GAME OVER!";
+        distanceElement.textContent = `Final Score: ${score}`; // Show final score
+        // Optionally hide timer or other elements
+        document.getElementById('timer-display').style.visibility = 'hidden';
+        // Disable buttons permanently for this session
+        if (guessButton) guessButton.disabled = true;
+        if (nextButton) {
+             nextButton.disabled = true;
+             // Consider adding a 'Play Again' button visibility toggle here
+        }
+        // Maybe show a game over overlay or modal
+        // You could re-purpose the startModal or create a new one
+        // e.g., const gameOverModal = document.getElementById('game-over-modal');
+        //       if (gameOverModal) gameOverModal.classList.remove('hidden');
 
-    // ... (update UI elements like distance) ...
+        return; // Stop the function here
+    }
+    // --- END GAME OVER CHECK ---
+
+    console.log(`Selected country: ${currentCountry.name}`);
+
+    // ... (update UI elements like distance, country name) ...
     distanceElement.textContent = 'N/A';
     document.getElementById('country-name-display').innerText = currentCountry.name;
+    document.getElementById('timer-display').style.visibility = 'visible'; // Ensure timer is visible
     resetTimerDisplay(); // Reset timer display text
 
     // --- START THE TIMER ---
@@ -2343,6 +2488,8 @@ async function startNewRound() {
     if (nextButton) nextButton.style.display = 'block'; // Ensure visible but disabled
 
     console.log(`[startNewRound] New round setup complete for: ${currentCountry.name}. Timer started.`);
+
+    // --- NO flag reset here (handled in listener) ---
 }
 
 // ... (rest of script.js) ...
@@ -3106,8 +3253,25 @@ function startGame() {
     }
     // --- END AUTO-FULLSCREEN ---
 
+    // --- PREPARE AND SHUFFLE COUNTRIES FOR THIS SESSION ---
+    if (countriesData && countriesData.length > 0) {
+        remainingCountries = [...countriesData]; // Create a copy
+        shuffleArray(remainingCountries); // Shuffle the copy
+        console.log(`>>> startGame: Initialized and shuffled ${remainingCountries.length} countries for this session.`);
+        
+        // Update the counter
+        updateCountriesLeftCounter();
+    } else {
+        console.error(">>> startGame: Cannot initialize remaining countries, base data is empty.");
+        // Handle this error - maybe prevent game start?
+        // You might want to show an error message here as well.
+        return; // Stop startGame if no data
+    }
+    // --- END PREPARE AND SHUFFLE ---
+
+
     // Now actually start the first round
-    if (countriesData.length > 0) {
+    if (remainingCountries.length > 0) { // Check the shuffled list now
         console.log(">>> startGame: Attempting to start first round...");
         startNewRound(); // This will handle country selection, timer start, etc.
         console.log(">>> startGame: startNewRound() called.");
@@ -3137,8 +3301,8 @@ function startGame() {
         // --- END MOBILE CAMERA ADJUSTMENT ---
 
     } else {
-        console.error(">>> startGame: Cannot start round, country data not loaded.");
-        // Handle error appropriately - maybe show an error message
+        console.error(">>> startGame: Cannot start round, remaining countries list is empty after initialization (this shouldn't happen if countriesData loaded).");
+        // Handle error appropriately
     }
 }
 // --- END NEW FUNCTION ---
@@ -3208,8 +3372,8 @@ function updateGlobeTexture() {
         map: newTexture,
         normalMap: newNormalTexture,
         roughnessMap: newRoughnessTexture,
-        displacementMap: newDisplacementTexture, // <<< ADD Displacement map
-        displacementScale: 0.2,                  // <<< ADD Displacement scale
+        displacementMap: newDisplacementTexture, 
+        displacementScale: 0.1,                  // <<< REDUCED value (was 0.2)
         // ... other consistent material properties
     });
 
@@ -3223,23 +3387,29 @@ function updateGlobeTexture() {
     console.log(">>> Globe recreated and added to scene with new texture!");
 }
 
-// Add this near your other global variables
-const PERMANENT_BOUNDARIES = []; // Store permanent boundary objects
-
-// Modified removeHighlightedBoundaries to only remove temporary highlights
-function removeHighlightedBoundaries() {
-    // This now only removes temporary highlights (if any)
-    // Permanent boundaries remain in the scene
-    console.log("Removing temporary boundary highlights (if any)...");
+// --- Helper function to shuffle an array (Fisher-Yates Algorithm) ---
+function shuffleArray(array) {
+    console.log(`Shuffling array of length ${array.length}...`);
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]]; // Swap elements
+    }
+    console.log("Shuffling complete.");
 }
 
-// Add this function to clear ALL boundaries when needed (e.g., new game)
-function clearAllBoundaries() {
-    console.log("Clearing ALL boundary lines...");
-    PERMANENT_BOUNDARIES.forEach(line => {
-        if (line.geometry) line.geometry.dispose();
-        if (line.material) line.material.dispose();
-        scene.remove(line);
-    });
-    PERMANENT_BOUNDARIES.length = 0; // Clear the array
+function updateCountriesLeftCounter() {
+    const counterElement = document.getElementById('countries-left');
+    const count = remainingCountries.length;
+    counterElement.textContent = count;
+
+    // Apply dynamic styling
+    counterElement.classList.remove('low', 'last');
+    if (count <= 5) {
+        counterElement.classList.add('low');
+    }
+    if (count === 1) {
+        counterElement.classList.add('last');
+    }
 }
+
+// Call this function in `startGame` and `startNewRound` instead of directly setting the text.

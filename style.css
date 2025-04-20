@@ -963,6 +963,7 @@ body.game-active #map-container {
     margin-bottom: 15px;
     line-height: 1.6;
     color: #ddd;
+    font-size: .9em;   
 }
 
 #start-game-button {
@@ -1031,4 +1032,21 @@ body.game-active #map-container {
 #start-game-button:active,
 #start-with-boundaries-button:active {
     transform: scale(0.98);
+}
+
+#countries-left {
+    font-weight: 500; /* Match the style of other dynamic values */
+    color: #8ab4f8;   /* Match the accent color */
+    font-size: 1.1em; /* Match the size of other dynamic values */
+}
+
+/* Highlight when few countries remain */
+#countries-left.low {
+    color: #ff9800; /* Orange for warning */
+    font-weight: bold;
+}
+
+#countries-left.last {
+    color: #f44336; /* Red for urgency */
+    font-weight: bold;
 }
