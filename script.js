@@ -446,44 +446,16 @@ function initMap() {
 
     // --- OrbitControls Setup ---
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    
-    // Base control settings
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.4;  // Very strong damping
-    controls.screenSpacePanning = false;
-    
-    // Zoom settings
-    controls.minDistance = EARTH_RADIUS * 1.1;
-    controls.maxDistance = EARTH_RADIUS * 3;  // Reduced max zoom
-    controls.zoomSpeed = 0.2;  // Very slow zoom
-    
-    // Rotation settings
-    controls.rotateSpeed = 0.2;  // Very slow rotation
-    
-    // Pan settings
-    controls.panSpeed = 0.15;  // Very slow pan
-    controls.keyPanSpeed = 3.0;  // Slow keyboard pan
-    
-    // Dynamic sensitivity adjustment with cubic curve
-    controls.addEventListener('change', function() {
-        const zoomRatio = (camera.position.length() - EARTH_RADIUS) / 
-                         (controls.maxDistance - EARTH_RADIUS);
-        
-        // Cubic curve for extremely aggressive reduction when zoomed in
-        const zoomFactor = Math.pow(zoomRatio, 3);  
-        
-        // Ultra-low sensitivity when zoomed in
-        controls.panSpeed = 0.05 + (0.1 * zoomFactor);  
-        controls.rotateSpeed = 0.1 + (0.15 * zoomFactor);
-        
-        // Additional stabilization when zoomed in
-        if (zoomRatio < 0.3) {
-            controls.dampingFactor = 0.5;  // Extra damping when very close
-        } else {
-            controls.dampingFactor = 0.4;
-        }
-    });
-
+    controls.enableDamping = true; // Enable damping for smoother movement
+    controls.dampingFactor = 0.05; // Adjust damping strength
+    controls.rotateSpeed = 0.4; // Adjust rotation speed
+    controls.panSpeed = 0.2; // Adjust panning speed
+    controls.enableZoom = true; // Enable zooming
+    controls.minDistance = EARTH_RADIUS + 0.5; // Prevent zooming inside the Earth
+    controls.maxDistance = EARTH_RADIUS * 5; // Limit zoom distance
+    controls.enablePan = true; // Enable panning
+    controls.zoomSpeed = 1.2; // Adjust zoom speed
+    controls.target.set(0, 0, 0); // Set the point to orbit around
     controls.update();
 
     // --- Disable vertical rotation below the horizon ---
@@ -1875,6 +1847,7 @@ async function handleGuessConfirm() {
                 const p2LonRad = deg2rad(p2[0]);
 
                 // --- Calculate distance from point to great circle segment ---
+                // This is a more complex calculation that takes into account the spherical geometry
                 const distToSegment = distanceToGreatCircleSegment(latRad, lonRad, p1LatRad, p1LonRad, p2LatRad, p2LonRad);
 
                 if (distToSegment < minDistance) {
@@ -1894,38 +1867,56 @@ async function handleGuessConfirm() {
 
     // --- Helper function to calculate distance to great circle segment ---
     function distanceToGreatCircleSegment(latRad, lonRad, p1LatRad, p1LonRad, p2LatRad, p2LonRad) {
-        // Convert lat/lon to 3D Cartesian coordinates
-        const point = getPointFromLatLon(rad2deg(latRad), rad2deg(lonRad));
-        const p1 = getPointFromLatLon(rad2deg(p1LatRad), rad2deg(p1LonRad));
-        const p2 = getPointFromLatLon(rad2deg(p2LatRad), rad2deg(p2LonRad));
+        // --- Step 1: Calculate the angular distance between the point and the two endpoints ---
+        const angularDist1 = angularDistance(latRad, lonRad, p1LatRad, p1LonRad);
+        const angularDist2 = angularDistance(latRad, lonRad, p2LatRad, p2LonRad);
 
-        // Calculate the normalized vector from p1 to p2
-        const segmentVector = new THREE.Vector3().subVectors(p2, p1).normalize();
+        // --- Step 2: Calculate the angular distance between the two endpoints ---
+        const segmentLength = angularDistance(p1LatRad, p1LonRad, p2LatRad, p2LonRad);
 
-        // Calculate the vector from p1 to the point
-        const pointVector = new THREE.Vector3().subVectors(point, p1);
+        // --- Step 3: Calculate the bearing from p1 to the point and from p1 to p2 ---
+        const bearing1 = initialBearing(p1LatRad, p1LonRad, latRad, lonRad);
+        const bearing2 = initialBearing(p1LatRad, p1LonRad, p2LatRad, p2LonRad);
 
-        // Project the pointVector onto the segmentVector
-        const projection = pointVector.dot(segmentVector);
+        // --- Step 4: Calculate the "cross-track distance" ---
+        const sinCrossTrack = Math.sin(angularDist1) * Math.sin(bearing1 - bearing2);
+        const absCrossTrack = Math.abs(Math.asin(sinCrossTrack)); // Absolute value of cross-track distance
 
-        // Calculate the closest point on the segment
-        let closestPoint;
-        if (projection < 0) {
-            closestPoint = p1; // Closest point is p1
-        } else if (projection > p2.distanceTo(p1)) {
-            closestPoint = p2; // Closest point is p2
+        // --- Step 5: Check if the point lies "beyond" the endpoints ---
+        const bearingToP2 = initialBearing(latRad, lonRad, p2LatRad, p2LonRad);
+        const bearingToP1 = initialBearing(latRad, lonRad, p1LatRad, p1LonRad);
+
+        const isPastP1 = Math.abs(bearing1 - bearing2) > Math.PI / 2; // Point is past p1
+        const isPastP2 = Math.abs(bearingToP2 - bearingToP1) > Math.PI / 2; // Point is past p2
+
+        // --- Step 6: Determine the distance to the segment ---
+        let distance;
+        if (isPastP1) {
+            distance = angularDist1; // Distance to p1
+        } else if (isPastP2) {
+            distance = angularDist2; // Distance to p2
         } else {
-            closestPoint = new THREE.Vector3().copy(p1).add(segmentVector.multiplyScalar(projection)); // Closest point is on the segment
+            distance = absCrossTrack; // Distance to the segment
         }
 
-        // Calculate the distance from the point to the closest point
-        const distance = point.distanceTo(closestPoint);
-
-        return distance * EARTH_RADIUS; // Convert to kilometers
+        // --- Step 7: Convert the angular distance to kilometers ---
+        return distance * EARTH_RADIUS;
     }
 
-    function rad2deg(rad) {
-        return rad * (180 / Math.PI);
+    // --- Helper function to calculate the angular distance between two points ---
+    function angularDistance(lat1, lon1, lat2, lon2) {
+        const deltaLon = lon2 - lon1;
+        const centralAngle = Math.acos(Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(deltaLon));
+        return centralAngle;
+    }
+
+    // --- Helper function to calculate the initial bearing between two points ---
+    function initialBearing(lat1, lon1, lat2, lon2) {
+        const deltaLon = lon2 - lon1;
+        const y = Math.sin(deltaLon) * Math.cos(lat2);
+        const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
+        const bearing = Math.atan2(y, x);
+        return bearing;
     }
 }
 
