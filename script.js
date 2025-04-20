@@ -446,18 +446,25 @@ function initMap() {
 
     // --- OrbitControls Setup ---
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
-    controls.dampingFactor = 0.05;
-    controls.screenSpacePanning = false;
-    controls.minDistance = 5;
-    controls.maxDistance = 15;
-    controls.maxPolarAngle = Math.PI;
+    controls.enableDamping = true; // Enable damping for smoother movement
+    controls.dampingFactor = 0.05; // Adjust damping strength
+    controls.rotateSpeed = 0.4; // Adjust rotation speed
+    controls.panSpeed = 0.2; // Adjust panning speed
+    controls.enableZoom = true; // Enable zooming
+    controls.minDistance = EARTH_RADIUS + 0.5; // Prevent zooming inside the Earth
+    controls.maxDistance = EARTH_RADIUS * 5; // Limit zoom distance
+    controls.enablePan = true; // Enable panning
+    controls.zoomSpeed = 1.2; // Adjust zoom speed
+    controls.target.set(0, 0, 0); // Set the point to orbit around
+    controls.update();
 
-    // --- Reduce Sensitivity ---
-    controls.zoomSpeed = 0.5;   // Default is 1
-    controls.rotateSpeed = 0.5; // Default is 1
-    controls.panSpeed = 0.5; // Default is 1
-    // -------------------------
+    // --- Disable vertical rotation below the horizon ---
+    controls.minPolarAngle = Math.PI * 0.1; // radians (0 is straight down)
+    controls.maxPolarAngle = Math.PI * 0.9; // radians (Math.PI/2 is straight up)
+
+    // --- Disable horizontal panning beyond a certain limit ---
+    controls.minAzimuthAngle = - Infinity; // radians
+    controls.maxAzimuthAngle = Infinity; // radians
 
     // --- Add Event Listener for Zoom Ending ---
     controls.addEventListener('change', () => {
@@ -1879,7 +1886,7 @@ async function handleGuessConfirm() {
             closestPoint = p1; // Closest point is p1
         } else if (projection > p2.distanceTo(p1)) {
             closestPoint = p2; // Closest point is p2
-         } else {
+        } else {
             closestPoint = new THREE.Vector3().copy(p1).add(segmentVector.multiplyScalar(projection)); // Closest point is on the segment
         }
 
@@ -1898,40 +1905,83 @@ async function handleGuessConfirm() {
 
 // Function to create or update the pin sprite
 function createOrUpdatePin(position) {
-    // Normalize the position vector to get the surface normal
-    const surfaceNormal = position.clone().normalize();
-    
-    // Define an offset to keep the pin above the surface
-    const PIN_OFFSET = 0.05; // Adjust this value as needed (0.05 = 5% of Earth radius)
-    
-    // Calculate the pin position by moving it slightly outward along the normal
-    const pinPosition = position.clone().addScaledVector(surfaceNormal, PIN_OFFSET);
-    
-    // Remove existing pin if it exists
-    if (pinSprite) {
-        scene.remove(pinSprite);
-        pinSprite = null;
+    const isNewPin = !pinSprite;
+    const currentScale = getPinScale();
+
+    if (!pinSprite) {
+        // <<< ADD polygonOffset to the pin material >>>
+        const pinMaterial = new THREE.SpriteMaterial({
+            map: null, // Start with no map
+            color: PIN_COLOR_DEFAULT.clone(),
+            depthTest: true,        // Keep depth testing enabled
+            depthWrite: false,      // Keep depth write disabled (sprites often don't write depth)
+            sizeAttenuation: false, // Keep pin size constant regardless of distance
+            polygonOffset: true,     // Enable polygon offset
+            polygonOffsetFactor: -2.0, // Push slightly more than lines, maybe? Adjust if needed.
+            polygonOffsetUnits: -2.0
+        });
+        // <<< END Add polygonOffset >>>
+
+
+        pinSprite = new THREE.Sprite(pinMaterial);
+        pinSprite.scale.set(currentScale, currentScale, currentScale);
+        pinSprite.center.set(0.5, 0);
+
+        // Load texture and update the *existing* sprite's material
+        const pinTexture = new THREE.TextureLoader().load(
+            PIN_IMAGE_PATH,
+            (texture) => { // On Load
+                if (pinSprite) {
+                    pinSprite.material.map = texture;
+                    pinSprite.material.needsUpdate = true;
+                    pinSprite.position.copy(position);
+                    scene.add(pinSprite);
+                    console.log("Pin sprite created and texture loaded.");
+                    if (isNewPin) playSound('pinPlace');
+
+                    // <<< ADDED: Log button state *after* texture load (for info only) >>>
+                    if (guessButton) {
+                         console.log(`createOrUpdatePin (Texture Loaded): guessButton.disabled is currently ${guessButton.disabled}`);
+                    }
+
+                } else { /* ... cleanup ... */ }
+            },
+            undefined, // Progress
+            (err) => { console.error("Error loading pin texture:", err); } // On Error
+        );
+
+    } else { // Pin already exists
+        pinSprite.position.copy(position);
+        playSound('pinPlace');
     }
-    
-    // Create new pin
-    const pinMaterial = new THREE.SpriteMaterial({
-        map: pinTexture,
-        color: 0xffffff,
-        transparent: true,
-        opacity: 1.0
-    });
-    
-    pinSprite = new THREE.Sprite(pinMaterial);
-    pinSprite.position.copy(pinPosition);
-    
-    // Scale the pin appropriately
-    const distance = camera.position.distanceTo(pinPosition);
-    const scale = getPinScale(distance);
-    pinSprite.scale.set(scale, scale, scale);
-    
-    // Add pin to scene
-    scene.add(pinSprite);
-    console.log("Pin created/updated at position:", pinPosition);
+    // Update player guess coordinates
+    playerGuess = getLatLonFromPoint(position);
+
+    // <<< ADD DETAILED LOGS >>>
+    console.log(`createOrUpdatePin: Attempting to evaluate button state.`);
+    console.log(`createOrUpdatePin: Current value of isGuessLocked = ${isGuessLocked}`);
+    console.log(`createOrUpdatePin: Checking guessButton element:`, guessButton);
+    // <<< END DETAILED LOGS >>>
+
+
+    // --- Enable GUESS button ONLY ---
+    if (!isGuessLocked) {
+         console.log("createOrUpdatePin: Condition !isGuessLocked is TRUE."); // Log condition success
+         if (guessButton) {
+             console.log("createOrUpdatePin: guessButton element exists. Setting disabled = false."); // Log intent
+             guessButton.disabled = false; // Enable the button
+             console.log(`createOrUpdatePin: guessButton.disabled is now ${guessButton.disabled}`); // Confirm result
+         } else {
+             console.warn("createOrUpdatePin: guessButton element not found. Cannot enable.");
+         }
+         // Ensure nextButton remains disabled
+         if (nextButton && nextButton.disabled !== true) {
+             console.warn("createOrUpdatePin: Forcing nextButton back to disabled.");
+             nextButton.disabled = true;
+         }
+    } else {
+         console.log("createOrUpdatePin: Condition !isGuessLocked is FALSE. Guess button NOT enabled."); // Log condition failure
+    }
 }
 
 // Function to remove the pin
