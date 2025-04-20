@@ -446,16 +446,44 @@ function initMap() {
 
     // --- OrbitControls Setup ---
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; // Enable damping for smoother movement
-    controls.dampingFactor = 0.05; // Adjust damping strength
-    controls.rotateSpeed = 0.4; // Adjust rotation speed
-    controls.panSpeed = 0.2; // Adjust panning speed
-    controls.enableZoom = true; // Enable zooming
-    controls.minDistance = EARTH_RADIUS + 0.5; // Prevent zooming inside the Earth
-    controls.maxDistance = EARTH_RADIUS * 5; // Limit zoom distance
-    controls.enablePan = true; // Enable panning
-    controls.zoomSpeed = 1.2; // Adjust zoom speed
-    controls.target.set(0, 0, 0); // Set the point to orbit around
+    
+    // Base control settings
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.4;  // Very strong damping
+    controls.screenSpacePanning = false;
+    
+    // Zoom settings
+    controls.minDistance = EARTH_RADIUS * 1.1;
+    controls.maxDistance = EARTH_RADIUS * 3;  // Reduced max zoom
+    controls.zoomSpeed = 0.2;  // Very slow zoom
+    
+    // Rotation settings
+    controls.rotateSpeed = 0.2;  // Very slow rotation
+    
+    // Pan settings
+    controls.panSpeed = 0.15;  // Very slow pan
+    controls.keyPanSpeed = 3.0;  // Slow keyboard pan
+    
+    // Dynamic sensitivity adjustment with cubic curve
+    controls.addEventListener('change', function() {
+        const zoomRatio = (camera.position.length() - EARTH_RADIUS) / 
+                         (controls.maxDistance - EARTH_RADIUS);
+        
+        // Cubic curve for extremely aggressive reduction when zoomed in
+        const zoomFactor = Math.pow(zoomRatio, 3);  
+        
+        // Ultra-low sensitivity when zoomed in
+        controls.panSpeed = 0.05 + (0.1 * zoomFactor);  
+        controls.rotateSpeed = 0.1 + (0.15 * zoomFactor);
+        
+        // Additional stabilization when zoomed in
+        if (zoomRatio < 0.3) {
+            controls.dampingFactor = 0.5;  // Extra damping when very close
+        } else {
+            controls.dampingFactor = 0.4;
+        }
+    });
+
     controls.update();
 
     // --- Disable vertical rotation below the horizon ---
